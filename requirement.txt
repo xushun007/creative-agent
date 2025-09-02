@@ -1,0 +1,6 @@
+openai>=1.100.0
+duckduckgo_search>=7.0.0
+
+
+# Testing dependencies
+pytest>=8.0.0
