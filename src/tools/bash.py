@@ -7,10 +7,12 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from .base_tool import BaseTool, ToolContext, ToolResult
 
+
 # 常量配置
 MAX_OUTPUT_LENGTH = 30000
 DEFAULT_TIMEOUT = 60  # 60秒
 MAX_TIMEOUT = 600     # 10分钟
+
 
 @dataclass
 class BashParams:
@@ -18,6 +20,7 @@ class BashParams:
     command: str
     timeout: Optional[int] = None
     description: Optional[str] = None
+
 
 class BashTool(BaseTool[Dict[str, Any]]):
     """Bash命令执行工具"""
@@ -114,4 +117,117 @@ class BashTool(BaseTool[Dict[str, Any]]):
         """异步执行命令"""
         # 设置环境变量
         env = os.environ.copy()
-        env['PYTHONUNBUFFERED'] = '1
+        env['PYTHONUNBUFFERED'] = '1'  # 确保Python输出不被缓冲
+        
+        # 创建进程
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,  # 合并stderr到stdout
+            cwd=cwd or os.getcwd(),
+            env=env,
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # 创建新的进程组
+        )
+        
+        output = ""
+        
+        try:
+            # 等待进程完成，带超时
+            stdout, _ = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout
+            )
+            
+            if stdout:
+                output = stdout.decode('utf-8', errors='replace')
+            
+            exit_code = process.returncode or 0
+            
+        except asyncio.TimeoutError:
+            # 超时处理
+            try:
+                if hasattr(os, 'killpg'):
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                else:
+                    process.terminate()
+                
+                # 等待进程结束
+                await asyncio.wait_for(process.wait(), timeout=5)
+            except (ProcessLookupError, asyncio.TimeoutError):
+                # 如果进程已经结束或强制终止失败，尝试SIGKILL
+                try:
+                    if hasattr(os, 'killpg'):
+                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                    else:
+                        process.kill()
+                except ProcessLookupError:
+                    pass
+            
+            output += f"\n\n[命令执行超时 ({timeout}秒) 并被终止]"
+            exit_code = 124  # 超时退出码
+        
+        except Exception as e:
+            output += f"\n\n[执行错误: {str(e)}]"
+            exit_code = 1
+        
+        return output, exit_code
+    
+    async def execute(self, params: Dict[str, Any], context: ToolContext) -> ToolResult:
+        """执行bash命令"""
+        # 解析参数
+        command = params["command"]
+        timeout = min(params.get("timeout", DEFAULT_TIMEOUT), MAX_TIMEOUT)
+        description = params.get("description", "")
+        
+        # 验证命令安全性
+        try:
+            self._validate_command(command)
+        except ValueError as e:
+            return ToolResult(
+                title=f"命令被拒绝: {command}",
+                output=f"安全检查失败: {str(e)}",
+                metadata={
+                    "command": command,
+                    "exit_code": 1,
+                    "error": str(e),
+                    "description": description
+                }
+            )
+        
+        # 执行命令
+        try:
+            output, exit_code = await self._execute_command(command, timeout)
+            
+            # 截断过长的输出
+            if len(output) > MAX_OUTPUT_LENGTH:
+                original_length = len(output)
+                output = output[:MAX_OUTPUT_LENGTH]
+                output += f"\n\n(输出因长度限制被截断，原始长度: {original_length} 字符)"
+            
+            # 构建结果
+            title = command
+            if exit_code != 0:
+                title += f" (退出码: {exit_code})"
+            
+            return ToolResult(
+                title=title,
+                output=output,
+                metadata={
+                    "command": command,
+                    "exit_code": exit_code,
+                    "description": description,
+                    "timeout": timeout
+                }
+            )
+            
+        except Exception as e:
+            return ToolResult(
+                title=f"执行失败: {command}",
+                output=f"执行错误: {str(e)}",
+                metadata={
+                    "command": command,
+                    "exit_code": 1,
+                    "error": str(e),
+                    "description": description
+                }
+            )

@@ -1,6 +1,9 @@
-openai>=1.100.0
-duckduckgo_search>=7.0.0
-
+# Core dependencies - 工具运行必需的库
+openai~=1.102.0
+ddgs~=9.5.0
+aiohttp~=3.12.0
+beautifulsoup4~=4.13.0
+html2text~=2025.4.15
 
 # Testing dependencies
-pytest>=8.0.0
+pytest~=8.4.1
