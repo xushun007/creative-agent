@@ -1,0 +1,459 @@
+[
+    {
+        "id": "bash",
+        "name": "bash",
+        "description": "在持久shell会话中执行给定的bash命令，具有可选的超时设置，确保正确的处理和安全措施。\n\n执行命令前，请遵循以下步骤：\n\n1. 目录验证：\n   - 如果命令将创建新目录或文件，首先使用LS工具验证父目录是否存在且位置正确\n   - 例如，在运行\"mkdir foo/bar\"之前，首先使用LS检查\"foo\"是否存在且是预期的父目录\n\n2. 命令执行：\n   - 始终用双引号包围包含空格的文件路径（例如：cd \"path with spaces/file.txt\"）\n   - 正确引用示例：\n     - cd \"/Users/name/My Documents\" (正确)\n     - cd /Users/name/My Documents (错误 - 会失败)\n     - python \"/path/with spaces/script.py\" (正确)\n     - python /path/with spaces/script.py (错误 - 会失败)\n   - 确保正确引用后，执行命令\n   - 捕获命令的输出\n\n使用说明：\n  - command参数是必需的\n  - 您可以指定可选的超时时间（毫秒）（最多600000ms/10分钟）。如果未指定，命令将在60000ms（1分钟）后超时\n  - 如果您能写出这个命令功能的清晰、简洁描述（5-10个字），会很有帮助\n  - 如果输出超过30000个字符，输出将在返回给您之前被截断\n  - 非常重要：您必须避免使用搜索命令如`find`和`grep`。请使用Grep、Glob或Task进行搜索。您必须避免读取工具如`cat`、`head`、`tail`和`ls`，请使用Read和LS读取文件\n  - 如果您仍需要运行`grep`，请停止。始终首先使用ripgrep的`rg`（或/usr/bin/rg），所有opencode用户都预装了它\n  - 发出多个命令时，使用';'或'&&'操作符分隔它们。不要使用换行符（在引用字符串中换行符是可以的）\n  - 通过使用绝对路径并避免使用`cd`来尝试在整个会话中维护您的当前工作目录。如果用户明确要求，您可以使用`cd`\n\n安全注意事项：\n  - 命令在受限环境中执行\n  - 某些危险命令可能被阻止\n  - 输出长度有限制以防止过度消耗资源\n  - 超时设置防止长时间运行的进程",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "要执行的命令"
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "可选的超时时间（秒）",
+                    "minimum": 1,
+                    "maximum": 600,
+                    "default": 60
+                },
+                "description": {
+                    "type": "string",
+                    "description": "命令功能的清晰、简洁描述（5-10个字）。示例：\n输入: ls\n输出: 列出当前目录中的文件\n\n输入: git status\n输出: 显示工作树状态\n\n输入: npm install\n输出: 安装包依赖\n\n输入: mkdir foo\n输出: 创建目录'foo'"
+                }
+            },
+            "required": [
+                "command"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "edit",
+        "name": "edit",
+        "description": "执行文件中的精确字符串替换。\n\n用法：\n- 在编辑之前，您必须在对话中至少使用一次 `Read` 工具。如果您尝试在不读取文件的情况下编辑，此工具将出错\n- 编辑来自 Read 工具输出的文本时，请确保保留行号前缀后显示的确切缩进（制表符/空格）。行号前缀格式为：空格 + 行号 + 制表符。制表符后的所有内容都是要匹配的实际文件内容。切勿在 oldString 或 newString 中包含行号前缀的任何部分\n- 始终优先编辑代码库中的现有文件。除非明确要求，否则切勿编写新文件\n- 仅在用户明确要求时使用表情符号。除非被要求，否则避免向文件添加表情符号\n- 如果 `oldString` 在文件中不唯一，编辑将失败。要么提供更大的字符串和更多周围上下文以使其唯一，要么使用 `replaceAll` 更改 `oldString` 的每个实例\n- 使用 `replaceAll` 在整个文件中替换和重命名字符串。例如，如果您想重命名变量，此参数很有用",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {
+                    "type": "string",
+                    "description": "要修改的文件的绝对路径"
+                },
+                "oldString": {
+                    "type": "string",
+                    "description": "要替换的文本"
+                },
+                "newString": {
+                    "type": "string",
+                    "description": "要替换为的文本（必须与 oldString 不同）"
+                },
+                "replaceAll": {
+                    "type": "boolean",
+                    "description": "替换 oldString 的所有出现（默认为 false）",
+                    "default": false
+                }
+            },
+            "required": [
+                "filePath",
+                "oldString",
+                "newString"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "glob",
+        "name": "glob",
+        "description": "文件名模式匹配工具，用于查找匹配特定模式的文件\n\n使用场景：\n- 查找特定类型的文件（如所有.py文件）\n- 按文件名模式搜索文件\n- 递归搜索目录结构\n- 批量文件操作前的文件收集\n\n特点：\n- 支持标准glob模式匹配\n- 自动递归搜索子目录\n- 按修改时间排序结果\n- 自动限制结果数量\n- 支持多种文件匹配模式\n\n模式语法：\n- * 匹配任意字符（除了路径分隔符）\n- ? 匹配单个字符\n- [seq] 匹配seq中的任意字符\n- [!seq] 匹配不在seq中的任意字符\n- ** 递归匹配任意层级目录\n- {a,b} 匹配a或b（需要使用pattern参数）\n\n用法：\n- pattern: 要匹配的文件模式，如\"*.py\", \"**/*.js\", \"test_*.py\"\n- path: 可选，搜索的根目录，默认为当前工作目录\n\n注意：\n- 如果未指定路径，将使用当前工作目录\n- 结果按修改时间降序排序\n- 结果数量限制为100个以保持响应速度\n- 不以\"**/\"开头的模式会自动添加\"**/\"以启用递归搜索",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "要匹配的文件模式，如'*.py', '**/*.js', 'test_*.py'"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "搜索的根目录路径，默认为当前工作目录。重要：省略此字段以使用默认目录，不要输入'undefined'或'null'"
+                }
+            },
+            "required": [
+                "pattern"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "grep",
+        "name": "grep",
+        "description": "强大的文件内容搜索工具，基于ripgrep构建\n\n使用场景：\n- 在代码库中搜索特定模式或字符串\n- 支持正则表达式搜索\n- 快速查找函数、类、变量定义\n- 搜索特定文件类型中的内容\n\n特点：\n- 基于ripgrep，搜索速度极快\n- 自动忽略.gitignore中的文件\n- 支持文件类型过滤\n- 按修改时间排序结果\n- 自动限制结果数量以保持响应速度\n\n用法：\n- pattern: 要搜索的正则表达式模式\n- path: 可选，搜索的目录路径，默认为当前工作目录\n- include: 可选，要包含的文件模式，如\"*.py\", \"*.{js,ts}\"\n- output_mode: 输出模式 - \"content\"显示匹配行(默认)，\"files_with_matches\"只显示文件路径，\"count\"显示匹配计数\n- context_before: 显示匹配行前的行数\n- context_after: 显示匹配行后的行数\n- case_insensitive: 是否忽略大小写\n- multiline: 是否启用多行模式\n- head_limit: 限制输出的前N行/条目\n\n注意：结果会被截断以保持响应速度；如果结果过多，请使用更具体的路径或模式",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "要搜索的正则表达式模式"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "搜索的目录路径，默认为当前工作目录"
+                },
+                "include": {
+                    "type": "string",
+                    "description": "要包含的文件模式，如'*.py', '*.{js,ts}'"
+                },
+                "output_mode": {
+                    "type": "string",
+                    "enum": [
+                        "content",
+                        "files_with_matches",
+                        "count"
+                    ],
+                    "default": "content",
+                    "description": "输出模式：content显示匹配行，files_with_matches只显示文件路径，count显示匹配计数"
+                },
+                "context_before": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "显示匹配行前的行数"
+                },
+                "context_after": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "显示匹配行后的行数"
+                },
+                "case_insensitive": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否忽略大小写"
+                },
+                "multiline": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否启用多行模式"
+                },
+                "head_limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "限制输出的前N行/条目"
+                }
+            },
+            "required": [
+                "pattern"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "list",
+        "name": "list",
+        "description": "列出指定目录下的文件和子目录结构\n\n功能特点：\n- 显示目录的树状结构\n- 自动忽略常见的构建输出、缓存、版本控制等目录\n- 支持自定义忽略模式\n- 按字母顺序排序\n- 限制结果数量以保持响应速度\n\n用法：\n- path: 可选，要列出的目录路径，必须是绝对路径，默认为当前工作目录\n- ignore: 可选，要忽略的glob模式列表，如[\"*.log\", \"temp*\"]\n- show_hidden: 可选，是否显示隐藏文件（以.开头的文件），默认为False\n- max_depth: 可选，最大递归深度，默认无限制\n\n输出格式：\n- 以树状结构显示目录和文件\n- 目录名后带有/标识\n- 使用缩进表示层级关系\n\n注意：\n- 为保持响应速度，结果会被限制在前100个条目\n- 默认忽略常见的构建输出和缓存目录\n- 如果结果被截断，会显示提示信息",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要列出的目录路径，必须是绝对路径，默认为当前工作目录"
+                },
+                "ignore": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "要忽略的glob模式列表"
+                },
+                "show_hidden": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否显示隐藏文件"
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "最大递归深度"
+                }
+            },
+            "required": []
+        },
+        "enabled": true
+    },
+    {
+        "id": "multiedit",
+        "name": "multiedit",
+        "description": "多重编辑工具 - 这是一个在单个操作中对单个文件进行多次编辑的工具。它建立在EditTool之上，允许您高效地执行多个查找和替换操作。当您需要对同一文件进行多次编辑时，优先使用此工具而不是EditTool。\n\n使用此工具之前：\n- 使用Read工具了解文件的内容和上下文\n- 验证目录路径是否正确\n\n要进行多个文件编辑，请提供以下内容：\n- filePath: 要修改的文件的绝对路径（必须是绝对路径，不是相对路径）\n- edits: 要执行的编辑操作数组，其中每个编辑包含：\n  - oldString: 要替换的文本（必须与文件内容完全匹配，包括所有空白和缩进）\n  - newString: 替换oldString的编辑文本\n  - replaceAll: 替换oldString的所有出现。此参数是可选的，默认为false\n\n重要说明：\n- 所有编辑按照提供的顺序依次应用\n- 每个编辑在前一个编辑的结果上操作\n- 所有编辑必须有效才能成功执行操作 - 如果任何编辑失败，则不会应用任何编辑\n- 此工具非常适合需要对同一文件的不同部分进行多次更改的情况\n\n关键要求：\n1. 所有编辑都遵循与单个编辑工具相同的要求\n2. 编辑是原子的 - 要么全部成功，要么全部不应用\n3. 仔细规划您的编辑以避免顺序操作之间的冲突\n\n警告：\n- 如果edits.oldString与文件内容不完全匹配（包括空白），工具将失败\n- 如果edits.oldString和edits.newString相同，工具将失败\n- 由于编辑是按顺序应用的，请确保较早的编辑不会影响较晚编辑试图查找的文本\n\n进行编辑时：\n- 确保所有编辑都产生惯用的、正确的代码\n- 不要让代码处于破损状态\n- 使用replaceAll在整个文件中替换和重命名字符串。例如，如果您想重命名变量，此参数很有用\n\n如果您想创建新文件：\n- 使用新文件路径，如有需要包括目录名\n- 第一次编辑：空的oldString和新文件的内容作为newString\n- 后续编辑：对创建的内容进行正常的编辑操作",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {
+                    "type": "string",
+                    "description": "要修改的文件的绝对路径"
+                },
+                "edits": {
+                    "type": "array",
+                    "description": "要在文件上按顺序执行的编辑操作数组",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "oldString": {
+                                "type": "string",
+                                "description": "要替换的文本"
+                            },
+                            "newString": {
+                                "type": "string",
+                                "description": "要替换为的文本"
+                            },
+                            "replaceAll": {
+                                "type": "boolean",
+                                "description": "替换oldString的所有出现（默认为false）",
+                                "default": false
+                            }
+                        },
+                        "required": [
+                            "oldString",
+                            "newString"
+                        ],
+                        "additionalProperties": false
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "filePath",
+                "edits"
+            ],
+            "additionalProperties": false
+        },
+        "enabled": true
+    },
+    {
+        "id": "read",
+        "name": "read",
+        "description": "从本地文件系统读取文件。您可以使用此工具直接访问任何文件。\n假设此工具能够读取机器上的所有文件。如果用户提供文件路径，请假设该路径有效。读取不存在的文件是可以的；将返回错误。\n\n用法：\n- filePath 参数必须是绝对路径，不是相对路径\n- 默认情况下，它从文件开头读取最多 2000 行\n- 您可以选择指定行偏移量和限制（对于长文件特别方便），但建议通过不提供这些参数来读取整个文件\n- 任何超过 2000 个字符的行都将被截断\n- 输出为纯净的文件内容，不包含行号\n- 此工具无法读取二进制文件，包括图像\n- 您有能力在单个响应中调用多个工具。批量推测性地读取可能有用的多个文件总是更好的\n- 如果您读取的文件存在但内容为空，您将收到系统提醒警告而不是文件内容",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {
+                    "type": "string",
+                    "description": "要读取的文件路径"
+                },
+                "offset": {
+                    "type": "number",
+                    "description": "开始读取的行号（从0开始）",
+                    "minimum": 0
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "要读取的行数（默认为2000）",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": 2000
+                }
+            },
+            "required": [
+                "filePath"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "task",
+        "name": "task",
+        "description": "启动新代理以自主处理复杂的多步骤任务。\n\n可用的代理类型及其可访问的工具：\n- code_reviewer: 用于审查代码质量、发现潜在问题和建议改进的代理\n- file_searcher: 专门用于搜索和分析文件内容的代理\n- test_generator: 用于生成单元测试和集成测试的代理\n- doc_generator: 用于生成和维护项目文档的代理\n- refactor_agent: 用于代码重构和优化的代理\n\n使用 Task 工具时，您必须指定 subagent_type 参数来选择要使用的代理类型。\n\n何时使用 Agent 工具：\n- 当您被指示执行自定义斜杠命令时。使用 Agent 工具，将斜杠命令调用作为整个提示。斜杠命令可以接受参数。例如：Task(description=\"检查文件\", prompt=\"/check-file path/to/file.py\")\n\n何时不使用 Agent 工具：\n- 如果您想读取特定文件路径，请使用 Read 或 Glob 工具而不是 Agent 工具，以更快地找到匹配项\n- 如果您正在搜索特定的类定义，如\"class Foo\"，请使用 Glob 工具，以更快地找到匹配项\n- 如果您正在特定文件或 2-3 个文件集中搜索代码，请使用 Read 工具而不是 Agent 工具，以更快地找到匹配项\n- 与上述代理描述无关的其他任务\n\n使用说明：\n1. 尽可能同时启动多个代理，以最大化性能；为此，请在单个消息中使用多个工具\n2. 代理完成后，它将向您返回单个消息。代理返回的结果对用户不可见。要向用户显示结果，您应该向用户发送包含结果简明摘要的文本消息\n3. 每次代理调用都是无状态的。您将无法向代理发送其他消息，代理也无法在其最终报告之外与您通信。因此，您的提示应包含代理自主执行的高度详细的任务描述，并且您应该准确指定代理应在其最终且唯一的消息中向您返回什么信息\n4. 代理的输出通常应该被信任\n5. 清楚地告诉代理您是期望它编写代码还是只做研究（搜索、文件读取、网络获取等），因为它不知道用户的意图\n6. 如果代理描述提到应该主动使用它，那么您应该尽力使用它，而不必让用户首先要求它。运用您的判断",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "任务的简短描述（3-5个词）"
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "代理要执行的任务"
+                },
+                "subagent_type": {
+                    "type": "string",
+                    "description": "用于此任务的专门代理类型",
+                    "enum": [
+                        "code_reviewer",
+                        "file_searcher",
+                        "test_generator",
+                        "doc_generator",
+                        "refactor_agent"
+                    ]
+                }
+            },
+            "required": [
+                "description",
+                "prompt",
+                "subagent_type"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "todoread",
+        "name": "todoread",
+        "description": "使用此工具读取会话的当前待办事项列表。应该主动且频繁地使用此工具，以确保您了解当前任务列表的状态。您应该尽可能经常使用此工具，特别是在以下情况下：\n- 在对话开始时查看待处理的事项\n- 在开始新任务之前确定工作优先级\n- 当用户询问以前的任务或计划时\n- 当您不确定下一步要做什么时\n- 完成任务后更新您对剩余工作的理解\n- 每隔几条消息后确保您在正确的轨道上\n\n用法：\n- 此工具不接受参数。所以输入留空。不要包含虚拟对象、占位符字符串或\"input\"或\"empty\"等键。留空即可\n- 返回带有状态、优先级和内容的待办事项列表\n- 使用此信息跟踪进度并规划下一步\n- 如果尚不存在待办事项，将返回空列表",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        },
+        "enabled": true
+    },
+    {
+        "id": "todowrite",
+        "name": "todowrite",
+        "description": "使用此工具创建和管理当前编码会话的结构化任务列表。这有助于跟踪进度、组织复杂任务并向用户展示全面性。\n它还帮助用户了解任务的进度和整体请求进展。\n\n## 何时使用此工具\n在以下场景中主动使用此工具：\n\n1. 复杂的多步骤任务 - 当任务需要3个或更多不同的步骤或操作时\n2. 非平凡和复杂的任务 - 需要仔细规划或多个操作的任务\n3. 用户明确请求待办事项列表 - 当用户直接要求您使用待办事项列表时\n4. 用户提供多个任务 - 当用户提供要完成的事项列表时（编号或逗号分隔）\n5. 收到新指令后 - 立即将用户需求捕获为待办事项。根据新信息随时编辑待办事项列表\n6. 完成任务后 - 标记为完成并添加任何新的后续任务\n7. 开始处理新任务时，将待办事项标记为 in_progress。理想情况下，您应该一次只有一个待办事项为 in_progress 状态。在开始新任务之前完成现有任务\n\n## 何时不使用此工具\n\n在以下情况下跳过使用此工具：\n1. 只有一个简单直接的任务\n2. 任务很琐碎，跟踪它没有组织上的好处\n3. 任务可以在少于3个琐碎步骤中完成\n4. 任务纯粹是对话性或信息性的\n\n注意：如果只有一个琐碎的任务要做，您不应该使用此工具。在这种情况下，最好直接完成任务。\n\n## 任务状态和管理\n\n1. **任务状态**：使用这些状态跟踪进度：\n   - pending: 任务尚未开始\n   - in_progress: 当前正在处理（一次限制一个任务）\n   - completed: 任务成功完成\n   - cancelled: 任务不再需要\n\n2. **任务管理**：\n   - 在工作时实时更新任务状态\n   - 完成后立即标记任务完成（不要批量完成）\n   - 任何时候只有一个任务处于 in_progress 状态\n   - 在开始新任务之前完成当前任务\n   - 取消变得不相关的任务\n\n3. **任务分解**：\n   - 创建具体、可操作的项目\n   - 将复杂任务分解为更小、可管理的步骤\n   - 使用清晰、描述性的任务名称\n\n如有疑问，请使用此工具。主动的任务管理展示了细心，并确保您成功完成所有要求。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "todos": {
+                    "type": "array",
+                    "description": "更新的待办事项列表",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "任务的简要描述"
+                            },
+                            "status": {
+                                "type": "string",
+                                "description": "任务的当前状态: pending, in_progress, completed, cancelled"
+                            },
+                            "id": {
+                                "type": "string",
+                                "description": "待办事项的唯一标识符"
+                            },
+                            "priority": {
+                                "type": "string",
+                                "description": "任务的优先级: high, medium, low",
+                                "default": "medium"
+                            }
+                        },
+                        "required": [
+                            "content",
+                            "status",
+                            "id"
+                        ]
+                    }
+                }
+            },
+            "required": [
+                "todos"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "webfetch",
+        "name": "webfetch",
+        "description": "从指定的 URL 获取内容。\n\n功能特性：\n- 从有效的 URL 获取和分析网页内容\n- 支持多种输出格式（text、markdown、html）\n- 自动处理 HTML 到 Markdown 的转换\n- 内置 15 分钟缓存机制，提高重复访问效率\n- 支持自定义超时设置\n\n使用说明：\n- 重要：如果有可用的 MCP 提供的网页获取工具，请优先使用那个工具，因为它可能有更少的限制。所有 MCP 提供的工具都以 \"mcp__\" 开头\n- URL 必须是完整有效的 URL\n- HTTP URL 将自动升级为 HTTPS\n- 此工具是只读的，不会修改任何文件\n- 如果内容很大，结果可能会被总结\n- 包含自清理的 15 分钟缓存，以便在重复访问同一 URL 时获得更快的响应",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "要获取内容的 URL"
+                },
+                "format": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "markdown",
+                        "html"
+                    ],
+                    "description": "返回内容的格式（text、markdown 或 html）",
+                    "default": "markdown"
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "可选的超时时间（秒，最大 120）",
+                    "minimum": 1,
+                    "maximum": 120,
+                    "default": 30
+                }
+            },
+            "required": [
+                "url",
+                "format"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "websearch",
+        "name": "websearch",
+        "description": "使用 DuckDuckGo 搜索引擎进行网络搜索。\n\n功能特性：\n- 使用 DuckDuckGo 搜索引擎进行网络搜索\n- 支持多种搜索类型（网页、新闻、图片等）\n- 返回结构化的搜索结果\n- 包含标题、URL、摘要等信息\n- 支持搜索结果数量限制\n\n使用说明：\n- 提供搜索查询词\n- 可以指定搜索类型和结果数量\n- 搜索结果包含相关网页的标题、URL 和摘要\n- 适用于获取最新信息和研究主题",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索查询词"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "最大搜索结果数量",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 10
+                },
+                "region": {
+                    "type": "string",
+                    "description": "搜索区域（如 'us-en', 'zh-cn'）",
+                    "default": "wt-wt"
+                },
+                "safesearch": {
+                    "type": "string",
+                    "enum": [
+                        "on",
+                        "moderate",
+                        "off"
+                    ],
+                    "description": "安全搜索设置",
+                    "default": "moderate"
+                },
+                "timelimit": {
+                    "type": "string",
+                    "enum": [
+                        "d",
+                        "w",
+                        "m",
+                        "y"
+                    ],
+                    "description": "时间限制（d=天，w=周，m=月，y=年）",
+                    "default": null
+                }
+            },
+            "required": [
+                "query"
+            ]
+        },
+        "enabled": true
+    },
+    {
+        "id": "write",
+        "name": "write",
+        "description": "将文件写入本地文件系统。\n\n用法：\n- 如果提供的路径已存在文件，此工具将覆盖现有文件\n- 如果这是现有文件，您必须首先使用 Read 工具读取文件的内容。如果您没有先读取文件，此工具将失败\n- 始终优先编辑代码库中的现有文件。除非明确要求，否则切勿编写新文件\n- 切勿主动创建文档文件（*.md）或 README 文件。仅在用户明确要求时创建文档文件\n- 仅在用户明确要求时使用表情符号。除非被要求，否则避免将表情符号写入文件",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filePath": {
+                    "type": "string",
+                    "description": "要写入的文件的绝对路径（必须是绝对路径，不是相对路径）"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要写入文件的内容"
+                }
+            },
+            "required": [
+                "filePath",
+                "content"
+            ]
+        },
+        "enabled": true
+    }
+]
