@@ -1,0 +1,24 @@
+# Development dependencies
+# Include base requirements
+-r requirements.txt
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Code quality
+black>=23.0.0
+flake8>=6.0.0
+isort>=5.12.0
+mypy>=1.0.0
+
+# Development tools
+ipython>=8.0.0
+jupyter>=1.0.0
+
+# Optional: For ripgrep functionality (system dependency)
+# Note: ripgrep should be installed via system package manager
+# Ubuntu/Debian: apt install ripgrep
+# macOS: brew install ripgrep
+# Windows: choco install ripgrep or scoop install ripgrep
