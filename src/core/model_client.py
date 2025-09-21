@@ -33,13 +33,16 @@ class ChatResponse:
 class ModelClient:
     """AI模型客户端"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, tool_registry=None):
         self.config = config
         self.client = AsyncOpenAI(
             api_key=config.api_key,
             base_url=config.api_base
         )
         self.conversation_history: List[Message] = []
+        self.tool_registry = tool_registry
+        
+        self._setup_system_messages()
     
     def add_system_message(self, content: str):
         """添加系统消息"""
@@ -60,6 +63,46 @@ class ModelClient:
     def clear_history(self):
         """清空对话历史"""
         self.conversation_history.clear()
+    
+    def _setup_system_messages(self):
+        """设置系统消息 - 内聚在ModelClient中"""
+        # 从prompt文件读取基础系统提示词
+        try:
+            prompt_file = Path(__file__).parent.parent / "prompt" / "ctv-claude-code-system-prompt-zh.txt"
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            # 如果文件不存在，使用配置中的基础指令作为回退
+            system_prompt = self.config.base_instructions
+        
+        # 添加用户自定义指令
+        if self.config.user_instructions:
+            system_prompt += f"\n\n用户指令:\n{self.config.user_instructions}"
+        
+        # 动态获取可用工具信息
+        if self.tool_registry:
+            available_tools = self.tool_registry.get_tools_dict(enabled_only=True)
+            tools_info = "\n".join([f"{i+1}. {tool['name']} - {tool['description']}" 
+                                   for i, tool in enumerate(available_tools)])
+            
+            # 添加环境信息和工具列表
+            system_prompt += f"""
+
+## 当前环境信息
+
+当前工作目录: {self.config.cwd}
+批准策略: {self.config.approval_policy}  
+沙箱策略: {self.config.sandbox_policy}
+
+## 可用工具
+
+你可以使用以下工具:
+{tools_info}
+
+请根据用户的需求，使用合适的工具来完成任务。在执行可能有风险的操作时，会根据批准策略询问用户确认。
+"""
+        
+        self.add_system_message(system_prompt)
     
     def get_tools_schema(self) -> List[Dict[str, Any]]:
         """获取工具模式定义 - 从工具注册系统动态获取"""
