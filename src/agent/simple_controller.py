@@ -111,7 +111,7 @@ class SimpleAgentController:
         
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-v3",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -203,7 +203,7 @@ Generate content that aligns with the goal and builds upon previous actions."""
         
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-v3",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

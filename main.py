@@ -9,7 +9,11 @@ creative tasks through a think-act-observe loop.
 import os
 import sys
 from openai import OpenAI
-from agent.smart_controller import SmartAgentController
+
+# Add src directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from agent.simple_controller import SimpleAgentController
 
 
 def get_openai_client():
@@ -23,6 +27,9 @@ def get_openai_client():
     
     # Support for custom base URL (e.g., for local models or other providers)
     base_url = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+
+    print(base_url)
+    print(api_key)
     
     try:
         client = OpenAI(
@@ -82,7 +89,7 @@ def main():
     
     # Initialize and run agent
     max_turns = int(os.getenv('MAX_TURNS_PER_STEP', '20'))
-    controller = SmartAgentController(client, max_turns_per_step=max_turns)
+    controller = SimpleAgentController(client, max_turns=max_turns)
     
     try:
         controller.run(goal)

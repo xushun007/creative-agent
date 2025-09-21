@@ -29,7 +29,7 @@ class AgentConfig:
     max_turns: int = 10
     max_tokens: int = 4000
     temperature: float = 0.1
-    model: str = "deepseek-r1"
+    model: str = "deepseek-chat"
     system_prompt_path: str = "prompt/ctv-claude-code-system-prompt-zh.txt"
     enable_streaming: bool = True
     working_directory: str = "./workspace"

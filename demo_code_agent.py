@@ -19,7 +19,7 @@ async def demo():
     workspace_dir = os.path.join(os.getcwd(), "workspace")
     config = AgentConfig(
         max_turns=3,  # 限制轮数以便演示
-        model="deepseek-v3",
+        model="deepseek-chat",
         working_directory=workspace_dir
     )
     

@@ -8,7 +8,7 @@ class Planner:
     def __init__(self, client: OpenAI):
         self.client = client
         # self.model = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
-        self.model = 'deepseek-v3'
+        self.model = 'deepseek-chat'
         # self.model = 'deepseek-r1'
     
     def create_plan(self, goal: str) -> List[str]:

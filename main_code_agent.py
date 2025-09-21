@@ -33,7 +33,7 @@ async def main():
     
     config = AgentConfig(
         max_turns=10,
-        model=os.getenv("OPENAI_MODEL", "deepseek-v3"),
+        model=os.getenv("OPENAI_MODEL", "deepseek-chat"),
         working_directory=workspace_dir
     )
     

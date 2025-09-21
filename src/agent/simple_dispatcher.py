@@ -6,9 +6,10 @@ Removes URL-specific coupling and focuses on clean tool orchestration
 import logging
 from typing import Dict, Any, Optional
 
-from tools.un_file_system import FileSystem
-from tools.un_web import WebTools
-from tools.un_bash import BashTools
+from tools.file_tools import ReadTool, WriteTool
+from tools.list_tool import ListTool
+from tools.web_tools import WebFetchTool, WebSearchTool
+from tools.bash import BashTool
 
 
 class SimpleDispatcher:
@@ -18,19 +19,22 @@ class SimpleDispatcher:
     """
     
     def __init__(self, max_file_size: int = 1024 * 1024):  # 1MB default
-        # Initialize tool instances with 1MB limits
-        self.file_system = FileSystem(max_file_size=max_file_size)
-        self.web = WebTools(max_content_size=max_file_size)
-        self.bash = BashTools()
+        # Initialize tool instances
+        self.read_tool = ReadTool()
+        self.write_tool = WriteTool()
+        self.list_tool = ListTool()
+        self.web_fetch_tool = WebFetchTool()
+        self.web_search_tool = WebSearchTool()
+        self.bash_tool = BashTool()
         self.max_file_size = max_file_size
         
         self.tools = {
-            'read_file': self.file_system,
-            'write_file': self.file_system,
-            'list_files': self.file_system,
-            'search': self.web,
-            'get_url': self.web,
-            'execute_bash': self.bash
+            'read_file': 'read_file',
+            'write_file': 'write_file',
+            'list_files': 'list_files',
+            'search': 'search',
+            'get_url': 'get_url',
+            'execute_bash': 'execute_bash'
         }
     
     def dispatch(self, tool_name: str, params: Dict[str, Any]) -> str:
@@ -42,21 +46,28 @@ class SimpleDispatcher:
             return f"Error: Unknown tool '{tool_name}'. Available tools: {list(self.tools.keys())}"
         
         try:
-            tool = self.tools[tool_name]
-            
             # Map tool names to method calls
             if tool_name == 'read_file':
-                return self.file_system.read_file(params.get('path', ''))
+                result = self.read_tool.execute({"filePath": params.get('path', '')}, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             elif tool_name == 'write_file':
-                return self.file_system.write_file(params.get('path', ''), params.get('content', ''))
+                result = self.write_tool.execute({
+                    "filePath": params.get('path', ''), 
+                    "content": params.get('content', '')
+                }, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             elif tool_name == 'list_files':
-                return self.file_system.list_files(params.get('path', '.'))
+                result = self.list_tool.execute({"path": params.get('path', '.')}, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             elif tool_name == 'search':
-                return self.web.search(params.get('query', ''))
+                result = self.web_search_tool.execute({"query": params.get('query', '')}, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             elif tool_name == 'get_url':
-                return self.web.get_url(params.get('url', ''))
+                result = self.web_fetch_tool.execute({"url": params.get('url', '')}, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             elif tool_name == 'execute_bash':
-                return self.bash.execute_bash(params.get('command', ''))
+                result = self.bash_tool.execute({"command": params.get('command', '')}, None)
+                return str(result.content) if result.success else f"Error: {result.error}"
             else:
                 return f"Error: Tool method not implemented for '{tool_name}'"
                 

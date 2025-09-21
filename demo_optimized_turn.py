@@ -28,7 +28,7 @@ async def demo_optimized_turn():
     # 创建配置
     config = AgentConfig(
         max_turns=5,
-        model="deepseek-r1",
+        model="deepseek-chat",
         system_prompt_path="prompt/ctv-claude-code-system-prompt-zh.txt"
     )
     

@@ -1,9 +1,14 @@
 """Turn-based Agent 演示"""
 
 import asyncio
+import sys
+import os
+
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 from agent.code_agent import LLMService, AgentConfig
 from agent.turn_based_agent import TurnBasedAgent
-
 from utils.logger import logger
 
 
@@ -14,8 +19,8 @@ async def demo_turn_agent():
     # 创建配置
     config = AgentConfig(
         max_turns=5,
-        model="deepseek-r1",
-        system_prompt_path="prompt/ctv-claude-code-system-prompt-zh.txt"
+        model="deepseek-chat",
+        system_prompt_path="src/prompt/ctv-claude-code-system-prompt-zh.txt"
     )
     
     # 创建LLM服务
@@ -105,15 +110,16 @@ async def demo_single_turn():
 
 
 if __name__ == "__main__":
-    print("选择演示模式:")
-    print("1. 交互式对话")
-    print("2. 单次Turn测试")
+    asyncio.run(demo_turn_agent())
+    # print("选择演示模式:")
+    # print("1. 交互式对话")
+    # print("2. 单次Turn测试")
     
-    choice = input("请选择 (1 或 2): ").strip()
+    # choice = input("请选择 (1 或 2): ").strip()
     
-    if choice == "1":
-        asyncio.run(demo_turn_agent())
-    elif choice == "2":
-        asyncio.run(demo_single_turn())
-    else:
-        print("无效选择")
+    # if choice == "1":
+    #     asyncio.run(demo_turn_agent())
+    # elif choice == "2":
+    #     asyncio.run(demo_single_turn())
+    # else:
+    #     print("无效选择")

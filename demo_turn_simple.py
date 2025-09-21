@@ -15,7 +15,7 @@ async def demo_turn():
     print("=== Turn类演示 ===\n")
     
     # 1. 初始化组件
-    config = AgentConfig(model="deepseek-r1")
+    config = AgentConfig(model="deepseek-chat")
     llm_service = LLMService(config)
     tool_executor = ToolExecutor()
     turn = Turn(llm_service, tool_executor)
