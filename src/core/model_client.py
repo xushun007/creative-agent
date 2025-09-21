@@ -28,6 +28,7 @@ class ChatResponse:
     tool_calls: List[Dict[str, Any]]
     token_usage: TokenUsage
     finish_reason: str
+    reasoning_content: Optional[str] = None  # 推理内容（DeepSeek等模型特有）
 
 
 class ModelClient:
@@ -184,6 +185,11 @@ class ModelClient:
                 for tc in message.tool_calls
             ]
         
+        # 提取推理内容（DeepSeek等模型特有）
+        reasoning_content = None
+        if hasattr(message, 'reasoning_content') and message.reasoning_content:
+            reasoning_content = message.reasoning_content
+
         # 构建token使用情况
         usage = response.usage
         token_usage = TokenUsage(
@@ -193,6 +199,7 @@ class ModelClient:
         )
 
         logger.debug(f"模型响应内容: {message.content}")
+        logger.debug(f"推理内容: {reasoning_content}")
         logger.debug(f"工具调用: {tool_calls}")
         logger.debug(f"Token使用情况: {token_usage}")
         logger.debug(f"完成原因: {choice.finish_reason}")
@@ -201,13 +208,15 @@ class ModelClient:
             content=message.content or "",
             tool_calls=tool_calls,
             token_usage=token_usage,
-            finish_reason=choice.finish_reason
+            finish_reason=choice.finish_reason,
+            reasoning_content=reasoning_content
         )
     
     async def _stream_completion(self, messages: List[Dict[str, Any]]) -> ChatResponse:
         """流式完成"""
         content = ""
         tool_calls = []
+        reasoning_content = ""
         
         stream = await self.client.chat.completions.create(
             model=self.config.model,
@@ -224,6 +233,9 @@ class ModelClient:
                 delta = chunk.choices[0].delta
                 if delta.content:
                     content += delta.content
+                # 处理推理内容增量
+                if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                    reasoning_content += delta.reasoning_content
                 if delta.tool_calls:
                     # 处理工具调用增量
                     for tc in delta.tool_calls:
@@ -244,7 +256,8 @@ class ModelClient:
             content=content,
             tool_calls=tool_calls,
             token_usage=token_usage,
-            finish_reason="stop"
+            finish_reason="stop",
+            reasoning_content=reasoning_content if reasoning_content else None
         )
     
     async def stream_completion_events(self, messages: List[Dict[str, Any]]) -> AsyncIterator[str]:

@@ -13,7 +13,7 @@ load_dotenv()
 class Config:
     """Codex配置类"""
     # 模型配置
-    model_provider: str = "openai"
+    model_provider: str = "deepseek"
     model: str = "deepseek-chat"
     api_key: Optional[str] = None
     api_base: Optional[str] = None

@@ -2,14 +2,11 @@
 
 import asyncio
 import json
-from typing import Optional, List, Dict, Any
-from pathlib import Path
+from typing import Optional, Dict
 import uuid
-from datetime import datetime
 
 from .protocol import (
-    Submission, Event, EventMsg, Op, AskForApproval, SandboxPolicy,
-    TokenUsage
+    Submission, Event, EventMsg, Op, TokenUsage
 )
 from .config import Config
 from .model_client import ModelClient
@@ -138,14 +135,9 @@ class Session:
                 if turn_result.token_usage:
                     self._update_token_usage(turn_result.token_usage)
                 
-                # 添加assistant消息到对话历史
+                # 记录最后的agent消息内容（assistant消息已在AgentTurn中添加）
                 if turn_result.text_content:
                     last_agent_message = turn_result.text_content
-                    self.model_client.add_assistant_message(
-                        turn_result.text_content, 
-                        [{"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}} 
-                         for tc in turn_result.tool_calls]
-                    )
                 
                 # 如果没有工具调用，任务完成
                 if not turn_result.has_tool_calls():

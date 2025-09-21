@@ -15,6 +15,13 @@ from utils.logger import logger
 
 
 @dataclass
+class ThoughtResult:
+    """思考结果"""
+    subject: str  # 思考主题
+    description: str  # 思考内容
+
+
+@dataclass
 class ToolCallRequest:
     """工具调用请求"""
     call_id: str
@@ -56,6 +63,9 @@ class AgentTurnResult:
     # 基本内容
     text_content: str = ""
     
+    # 思考内容
+    thoughts: List[ThoughtResult] = field(default_factory=list)
+    
     # 工具调用
     tool_calls: List[ToolCallRequest] = field(default_factory=list)
     tool_responses: List[ToolCallResponse] = field(default_factory=list)
@@ -79,6 +89,8 @@ class AgentTurnResult:
         parts = []
         if self.text_content:
             parts.append(f"文本响应: {len(self.text_content)} 字符")
+        if self.thoughts:
+            parts.append(f"推理内容: {len(self.thoughts)} 条")
         if self.tool_calls:
             parts.append(f"工具调用: {len(self.tool_calls)} 个")
         if self.token_usage:
@@ -108,21 +120,44 @@ class AgentTurn:
         
         try:
             # 1. 调用LLM获取响应
-            logger.info("开始LLM调用")
+            logger.info("开始Turn LLM调用")
             llm_response = await self.model_client.chat_completion()
             
             # 2. 解析LLM响应
             result = self._parse_llm_response(llm_response)
             
-            # 3. 发送AI消息事件
+            # 3. 立即将assistant消息添加到对话历史（在工具调用之前）
+            if result.text_content or result.has_tool_calls():
+                # 构建tool_calls格式
+                tool_calls_for_message = []
+                if result.has_tool_calls():
+                    tool_calls_for_message = [
+                        {
+                            "id": tc.call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.args)
+                            }
+                        }
+                        for tc in result.tool_calls
+                    ]
+                
+                # 添加assistant消息到对话历史
+                self.model_client.add_assistant_message(
+                    result.text_content or "", 
+                    tool_calls_for_message if tool_calls_for_message else None
+                )
+            
+            # 4. 发送AI消息事件
             if result.text_content and self.event_handler:
                 await self.event_handler.emit_agent_message(submission_id, result.text_content)
             
-            # 4. 处理工具调用（如果有）
+            # 5. 处理工具调用（如果有）
             if result.has_tool_calls():
                 await self._handle_tool_calls(submission_id, result)
             
-            # 5. 计算执行时间
+            # 6. 计算执行时间
             end_time = datetime.now()
             result.duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
@@ -148,6 +183,15 @@ class AgentTurn:
         
         # 提取文本内容
         result.text_content = response.content or ""
+        
+        # 提取推理内容（DeepSeek等模型特有）
+        # 注意：这里需要从原始响应对象中获取推理内容
+        # ChatResponse可能需要扩展以支持推理内容
+        if hasattr(response, 'reasoning_content') and response.reasoning_content:
+            result.thoughts.append(ThoughtResult(
+                subject="推理",
+                description=response.reasoning_content
+            ))
         
         # 提取工具调用
         if response.tool_calls:

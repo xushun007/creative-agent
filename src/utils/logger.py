@@ -10,7 +10,7 @@ class Logger:
     日志工具类，支持按天记录日志
     """
     
-    def __init__(self, name='creative-agent',  level=logging.INFO):
+    def __init__(self, name='creative-agent',  level=logging.DEBUG):
         """
         初始化日志器
         
