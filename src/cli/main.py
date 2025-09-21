@@ -19,7 +19,7 @@ from core.protocol import Event, EventMsg
 
 # 全局变量
 console = Console()
-app = typer.Typer(name="codex", help="Codex Python - AI编程助手")
+app = typer.Typer(name="codex", help="Codex - AI编程助手")
 
 
 class CodexCLI:
@@ -159,12 +159,38 @@ class CodexCLI:
             error_msg = msg.data.get("message", "未知错误")
             console.print(f"[red]❌ 错误: {error_msg}[/red]")
         
+        elif msg.type == "tool_execution_begin":
+            tool_name = msg.data.get("tool_name", "")
+            console.print(f"[yellow]🔧 执行工具: {tool_name}[/yellow]")
+        
+        elif msg.type == "tool_execution_end":
+            tool_name = msg.data.get("tool_name", "")
+            success = msg.data.get("success", False)
+            
+            if success:
+                console.print(f"[green]✅ 工具 {tool_name} 执行成功[/green]")
+                # 可选：显示工具结果的简要信息
+                result = msg.data.get("result", "")
+                if result and len(result) < 200:  # 只显示简短结果
+                    console.print(f"[dim]结果: {result[:100]}...[/dim]")
+            else:
+                error = msg.data.get("error", "未知错误")
+                console.print(f"[red]❌ 工具 {tool_name} 执行失败: {error}[/red]")
+        
+        elif msg.type == "approval_complete":
+            decision = msg.data.get("decision", "")
+            result = msg.data.get("result", "")
+            if decision == "approved":
+                console.print(f"[green]✅ 批准执行完成: {result}[/green]")
+            else:
+                console.print(f"[yellow]ℹ️  批准处理: {result}[/yellow]")
+        
         elif msg.type == "session_configured":
             # 会话配置完成，静默处理
             pass
         
         else:
-            # 其他事件类型
+            # 其他事件类型，包括未知的新事件
             console.print(f"[dim]事件: {msg.type}[/dim]")
     
     async def _handle_approval_request(self, event: Event):

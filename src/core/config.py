@@ -14,12 +14,12 @@ class Config:
     """Codex配置类"""
     # 模型配置
     model_provider: str = "openai"
-    model: str = "qwen-plus"
+    model: str = "deepseek-chat"
     api_key: Optional[str] = None
     api_base: Optional[str] = None
     
     # 工作目录
-    cwd: Path = field(default_factory=Path.cwd)
+    cwd: Path = field(default_factory=lambda: Path.cwd() / "workspace")
     
     # 安全策略
     approval_policy: str = "on_request"
@@ -40,17 +40,17 @@ class Config:
     def __post_init__(self):
         """初始化后处理"""
         if self.api_key is None:
-            self.api_key = os.getenv("DASHSCOPE_API_KEY")
+            self.api_key = os.getenv("OPENAI_API_KEY")
         
         if self.api_base is None:
-            self.api_base = os.getenv("$OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        
-        # print(self.api_base)
-        # print(self.api_key)
+            self.api_base = os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
         # 确保cwd是Path对象
         if isinstance(self.cwd, str):
             self.cwd = Path(self.cwd)
+        
+        # 确保workspace目录存在
+        self.cwd.mkdir(parents=True, exist_ok=True)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":

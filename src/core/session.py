@@ -22,6 +22,10 @@ class Session:
         self.session_id = str(uuid.uuid4())
         self.model_client = ModelClient(config)
         
+        # 集成工具注册系统
+        from tools.registry import get_global_registry
+        self.tool_registry = get_global_registry()
+        
         # 队列
         self.submission_queue = asyncio.Queue()
         self.event_queue = asyncio.Queue()
@@ -39,21 +43,37 @@ class Session:
     
     def _setup_system_messages(self):
         """设置系统消息"""
-        system_prompt = self.config.base_instructions
+        # 从prompt文件读取基础系统提示词
+        try:
+            prompt_file = Path(__file__).parent.parent / "prompt" / "ctv-claude-code-system-prompt-zh.txt"
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            # 如果文件不存在，使用配置中的基础指令作为回退
+            system_prompt = self.config.base_instructions
+        
+        # 添加用户自定义指令
         if self.config.user_instructions:
             system_prompt += f"\n\n用户指令:\n{self.config.user_instructions}"
         
+        # 动态获取可用工具信息
+        available_tools = self.tool_registry.get_tools_dict(enabled_only=True)
+        tools_info = "\n".join([f"{i+1}. {tool['name']} - {tool['description']}" 
+                               for i, tool in enumerate(available_tools)])
+        
+        # 添加环境信息和工具列表
         system_prompt += f"""
+
+## 当前环境信息
 
 当前工作目录: {self.config.cwd}
 批准策略: {self.config.approval_policy}  
 沙箱策略: {self.config.sandbox_policy}
 
+## 可用工具
+
 你可以使用以下工具:
-1. execute_command - 执行shell命令
-2. read_file - 读取文件内容
-3. write_file - 写入文件内容
-4. apply_patch - 应用代码补丁
+{tools_info}
 
 请根据用户的需求，使用合适的工具来完成任务。在执行可能有风险的操作时，会根据批准策略询问用户确认。
 """
@@ -218,11 +238,9 @@ class Session:
         await self.event_queue.put(task_complete_event)
     
     async def _handle_tool_calls(self, submission_id: str, tool_calls: List[Dict[str, Any]]):
-        """处理工具调用 - 优化版本"""
-        from tools import ToolExecutor
+        """处理工具调用 - 使用工具注册系统"""
+        from tools.base_tool import ToolContext
         import json
-        
-        executor = ToolExecutor(self.config)
         
         for tool_call in tool_calls:
             tool_name = tool_call["function"]["name"]
@@ -249,33 +267,76 @@ class Session:
                     await self._request_approval(submission_id, call_id, tool_name, arguments)
                     continue
                 
-                # 执行工具调用
-                result = await self._execute_tool_safely(executor, tool_name, arguments, call_id)
+                # 发送工具执行开始事件
+                exec_start_event = Event(
+                    id=submission_id,
+                    msg=EventMsg("tool_execution_begin", {
+                        "tool_name": tool_name,
+                        "call_id": call_id,
+                        "arguments": arguments
+                    })
+                )
+                await self.event_queue.put(exec_start_event)
                 
-                # 添加工具结果到对话历史
-                self.model_client.add_tool_message(call_id, result)
+                # 创建工具执行上下文
+                context = ToolContext(
+                    session_id=self.session_id,
+                    message_id=submission_id,
+                    agent="Session",
+                    call_id=call_id
+                )
+                
+                # 使用工具注册系统执行工具
+                result = await self.tool_registry.execute_tool(tool_name, arguments, context)
+                
+                # 格式化结果并添加到消息历史
+                if result:
+                    result_text = result.output
+                    self.model_client.add_tool_message(call_id, result_text)
+                    
+                    # 发送工具执行成功事件
+                    exec_end_event = Event(
+                        id=submission_id,
+                        msg=EventMsg("tool_execution_end", {
+                            "tool_name": tool_name,
+                            "call_id": call_id,
+                            "success": True,
+                            "result": result_text
+                        })
+                    )
+                else:
+                    error_result = "工具执行失败，返回空结果"
+                    self.model_client.add_tool_message(call_id, error_result)
+                    
+                    # 发送工具执行失败事件
+                    exec_end_event = Event(
+                        id=submission_id,
+                        msg=EventMsg("tool_execution_end", {
+                            "tool_name": tool_name,
+                            "call_id": call_id,
+                            "success": False,
+                            "error": error_result
+                        })
+                    )
+                
+                await self.event_queue.put(exec_end_event)
                 
             except Exception as e:
                 error_result = f"工具调用处理失败: {str(e)}"
                 self.model_client.add_tool_message(call_id, error_result)
-    
-    async def _execute_tool_safely(self, executor, tool_name: str, 
-                                 arguments: Dict[str, Any], call_id: str) -> str:
-        """安全执行工具调用"""
-        try:
-            result = await executor.execute_tool(tool_name, arguments)
-            
-            # 格式化结果
-            if result is None:
-                return "工具执行完成，无返回值"
-            elif isinstance(result, (dict, list)):
-                import json
-                return json.dumps(result, ensure_ascii=False, indent=2)
-            else:
-                return str(result)
                 
-        except Exception as e:
-            return f"工具执行失败: {tool_name}({arguments}) - {str(e)}"
+                # 发送工具执行异常事件
+                exec_error_event = Event(
+                    id=submission_id,
+                    msg=EventMsg("tool_execution_end", {
+                        "tool_name": tool_name,
+                        "call_id": call_id,
+                        "success": False,
+                        "error": error_result
+                    })
+                )
+                await self.event_queue.put(exec_error_event)
+    
     
     async def _needs_approval(self, tool_name: str, arguments: Dict[str, Any]) -> bool:
         """检查是否需要用户批准"""
@@ -286,17 +347,18 @@ class Session:
         elif approval_policy == AskForApproval.ON_REQUEST:
             # 对于某些危险操作总是需要批准
             dangerous_commands = ["rm", "del", "format", "sudo", "chmod"]
-            if tool_name == "execute_command":
+            # 适配新的工具名称
+            if tool_name in ["execute_command", "bash"]:
                 command = arguments.get("command", "")
                 return any(cmd in command.lower() for cmd in dangerous_commands)
-            elif tool_name == "write_file":
+            elif tool_name in ["write_file", "write"]:
                 # 写入系统重要文件需要批准
                 file_path = arguments.get("file_path", "")
                 system_paths = ["/etc", "/sys", "/proc", "C:\\Windows"]
                 return any(path in file_path for path in system_paths)
         elif approval_policy == AskForApproval.UNLESS_TRUSTED:
             # 只有明确安全的操作才不需要批准
-            if tool_name == "read_file":
+            if tool_name in ["read_file", "read"]:
                 return False
             return True
         
@@ -356,33 +418,68 @@ class Session:
         if decision in ["approved", "approved_for_session"]:
             # 执行之前被阻止的操作
             try:
-                from tools import ToolExecutor
-                executor = ToolExecutor(self.config)
+                from tools.base_tool import ToolContext
                 
-                result = await self._execute_tool_safely(
-                    executor, 
+                # 创建工具执行上下文
+                context = ToolContext(
+                    session_id=self.session_id,
+                    message_id=submission.id,
+                    agent="Session",
+                    call_id=call_id
+                )
+                
+                # 使用工具注册系统执行工具
+                result = await self.tool_registry.execute_tool(
                     pending_call["tool_name"], 
                     pending_call["arguments"], 
-                    call_id
+                    context
                 )
                 
-                # 添加工具结果到对话历史
-                self.model_client.add_tool_message(call_id, result)
+                # 格式化结果并添加到消息历史
+                if result:
+                    result_text = result.output
+                    self.model_client.add_tool_message(call_id, result_text)
+                    
+                    # 发送批准完成事件
+                    approval_complete_event = Event(
+                        id=submission.id,
+                        msg=EventMsg("approval_complete", {
+                            "call_id": call_id,
+                            "decision": decision,
+                            "result": "已执行",
+                            "tool_result": result_text
+                        })
+                    )
+                else:
+                    error_result = "批准后工具执行返回空结果"
+                    self.model_client.add_tool_message(call_id, error_result)
+                    
+                    approval_complete_event = Event(
+                        id=submission.id,
+                        msg=EventMsg("approval_complete", {
+                            "call_id": call_id,
+                            "decision": decision,
+                            "result": "执行失败",
+                            "error": error_result
+                        })
+                    )
                 
-                # 发送批准完成事件
-                approval_complete_event = Event(
-                    id=submission.id,
-                    msg=EventMsg("approval_complete", {
-                        "call_id": call_id,
-                        "decision": decision,
-                        "result": "已执行"
-                    })
-                )
                 await self.event_queue.put(approval_complete_event)
                 
             except Exception as e:
                 error_result = f"批准后执行失败: {str(e)}"
                 self.model_client.add_tool_message(call_id, error_result)
+                
+                error_event = Event(
+                    id=submission.id,
+                    msg=EventMsg("approval_complete", {
+                        "call_id": call_id,
+                        "decision": decision,
+                        "result": "执行异常",
+                        "error": error_result
+                    })
+                )
+                await self.event_queue.put(error_event)
         else:
             # 拒绝执行
             rejection_result = f"用户拒绝执行工具调用: {pending_call['tool_name']}"

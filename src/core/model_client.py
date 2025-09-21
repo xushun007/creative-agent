@@ -9,6 +9,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 from .protocol import TokenUsage
 from .config import Config
+from utils.logger import logger
 
 
 @dataclass
@@ -61,89 +62,26 @@ class ModelClient:
         self.conversation_history.clear()
     
     def get_tools_schema(self) -> List[Dict[str, Any]]:
-        """获取工具模式定义"""
-        return [
-            {
+        """获取工具模式定义 - 从工具注册系统动态获取"""
+        from tools.registry import get_global_registry
+        
+        registry = get_global_registry()
+        tools_dict = registry.get_tools_dict(enabled_only=True)
+        
+        # 转换为OpenAI API需要的格式
+        openai_tools = []
+        for tool in tools_dict:
+            openai_tool = {
                 "type": "function",
                 "function": {
-                    "name": "execute_command",
-                    "description": "执行shell命令",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": {
-                                "type": "string",
-                                "description": "要执行的shell命令"
-                            },
-                            "cwd": {
-                                "type": "string", 
-                                "description": "命令执行的工作目录"
-                            }
-                        },
-                        "required": ["command"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "read_file",
-                    "description": "读取文件内容",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "文件路径"
-                            }
-                        },
-                        "required": ["file_path"]
-                    }
-                }
-            },
-            {
-                "type": "function", 
-                "function": {
-                    "name": "write_file",
-                    "description": "写入文件内容",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "文件路径"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "文件内容"
-                            }
-                        },
-                        "required": ["file_path", "content"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "apply_patch",
-                    "description": "应用代码补丁",
-                    "parameters": {
-                        "type": "object", 
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "目标文件路径"
-                            },
-                            "patch": {
-                                "type": "string",
-                                "description": "unified diff格式的补丁"
-                            }
-                        },
-                        "required": ["file_path", "patch"]
-                    }
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["parameters"]
                 }
             }
-        ]
+            openai_tools.append(openai_tool)
+        
+        return openai_tools
     
     async def chat_completion(self, stream: bool = False) -> ChatResponse:
         """发送聊天完成请求"""
@@ -164,7 +102,7 @@ class ModelClient:
             
             messages.append(message_dict)
 
-        print(messages)
+        logger.debug(f"发送消息到模型: {messages}")
         
         try:
             if stream:
@@ -211,10 +149,10 @@ class ModelClient:
             total_tokens=usage.total_tokens
         )
 
-        print(message.content)
-        print(tool_calls)
-        print(token_usage)
-        print(choice.finish_reason)
+        logger.debug(f"模型响应内容: {message.content}")
+        logger.debug(f"工具调用: {tool_calls}")
+        logger.debug(f"Token使用情况: {token_usage}")
+        logger.debug(f"完成原因: {choice.finish_reason}")
         
         return ChatResponse(
             content=message.content or "",

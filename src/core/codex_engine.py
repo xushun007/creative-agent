@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import Config
 from .session import Session
 from .protocol import Op, Event, Submission
+from utils.logger import logger
 
 
 class CodexEngine:
@@ -90,7 +91,7 @@ class CodexEngine:
         try:
             await self.session.process_submissions()
         except Exception as e:
-            print(f"会话处理循环出错: {e}")
+            logger.error(f"会话处理循环出错: {e}")
         finally:
             self._running = False
     
