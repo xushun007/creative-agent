@@ -4,7 +4,7 @@
 
 本文档描述了将现有项目中的两套架构进行集成的设计方案：
 - **新架构**: `src/cli`, `src/core` - 基于事件驱动的Codex引擎
-- **原架构**: `src/agent`, `src/tools` - 基于Turn的Agent系统
+- **原架构**: `src/core`, `src/tools` - 基于CodexEngine的系统
 
 集成目标是保留两套架构的优点，创建一个统一、高效的AI编程助手系统。
 
@@ -34,14 +34,14 @@
 
 **优点：**
 - 完整的工具注册系统，支持12+种工具
-- 强大的Turn-based交互模式
+- 强大的工具协作模式
 - 灵活的工具执行器和参数验证
 - 多轮推理支持
 - 丰富的工具生态（bash, edit, file, web等）
 
 **核心组件：**
-- `TurnBasedAgent`: 基于Turn的智能代理
-- `Turn`: 单次交互封装
+- `CodexEngine`: 基于事件驱动的智能引擎
+- `AgentTurn`: 单次交互封装
 - `ToolRegistry`: 工具注册管理
 - `ToolExecutor`: 工具执行引擎
 
@@ -56,7 +56,7 @@
 
 1. **原地重构**: 直接修改现有类，不创建新的Enhanced类
 2. **保持精简**: 最小化修改，避免过度设计
-3. **事件驱动适配**: Turn系统适配现有的event和submission循环
+3. **事件驱动适配**: AgentTurn系统适配现有的event和submission循环
 4. **工具系统集成**: 无缝集成原架构的工具注册系统
 5. **向后兼容**: 保持现有接口和配置不变
 
@@ -77,10 +77,10 @@
 ### 3.3 核心集成点
 
 #### 3.3.1 Session原地重构
-在现有`Session`类中直接集成Turn能力：
+在现有`Session`类中直接集成AgentTurn能力：
 - 保留现有的事件驱动机制和ReAct循环
 - 替换简单工具执行器为完整的ToolRegistry系统
-- 适配Turn的工具调用格式到现有的submission处理流程
+- 适配AgentTurn的工具调用格式到现有的submission处理流程
 
 #### 3.3.2 ModelClient工具Schema集成
 修改`ModelClient.get_tools_schema()`方法：
@@ -401,14 +401,14 @@ self.tool_registry = get_global_registry()
 2. 测试基本功能正常后，再优化细节
 3. 最后添加新工具的支持
 
-### 12.4 Turn类可选集成
+### 12.4 AgentTurn类集成
 
-如果需要在Session中使用Turn的多轮推理能力：
+在Session中使用AgentTurn的多轮推理能力：
 ```python
-# 在Session中可选添加：
-from agent.turn import Turn
+# 在Session中已集成：
+from core.agent_turn import AgentTurn
 
-# 在复杂任务处理中使用Turn
+# 在复杂任务处理中使用AgentTurn
 async def _handle_complex_reasoning(self, submission: Submission):
     # 使用Turn进行多轮推理
     # 结果通过现有事件系统反馈
