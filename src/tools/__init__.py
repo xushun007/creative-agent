@@ -8,6 +8,11 @@ from .task_tool import TaskTool, TaskManager, AgentConfig, TaskSession
 from .web_tools import WebFetchTool, WebSearchTool
 from .registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
 
+from .executor import ToolExecutor
+from .patch_applier import PatchApplier
+from .sandbox import SandboxExecutor
+
+
 __all__ = [
     'BaseTool',
     'ToolContext', 
@@ -30,5 +35,8 @@ __all__ = [
     'ToolRegistry',
     'ToolInfo',
     'get_global_registry',
-    'reset_global_registry'
+    'reset_global_registry',
+    "ToolExecutor",
+    "PatchApplier", 
+    "SandboxExecutor"
 ]

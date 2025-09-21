@@ -27,6 +27,10 @@ dependencies = [
     "aiohttp~=3.12.0",
     "beautifulsoup4~=4.13.0",
     "html2text~=2025.4.15",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "toml>=0.10.0",
 ]
 
 [project.optional-dependencies]
