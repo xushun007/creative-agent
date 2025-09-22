@@ -19,7 +19,8 @@ class Logger:
             log_dir (str): 日志文件存储目录
             level (int): 日志级别
         """
-        project_root_dir = Path(__file__).parent.parent.resolve()
+        # 获取项目根目录：从 src/utils/logger.py 向上三级到项目根目录
+        project_root_dir = Path(__file__).parent.parent.parent.resolve()
         log_dir = os.path.join(project_root_dir, 'logs')
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
