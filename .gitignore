@@ -21,7 +21,18 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Environment variables (contains sensitive data)
+.env
+.env.local
+.env.*.local
+
+# Logs
 logs
 *.log
 
+# Workspace
 workspace
+
+# Temporary files
+test.py
+CR-20250929.md

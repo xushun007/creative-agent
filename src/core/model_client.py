@@ -146,7 +146,7 @@ class ModelClient:
             
             messages.append(message_dict)
 
-        logger.debug(f"发送消息到模型: {messages}")
+        logger.debug(f"发送消息到模型: {messages[1:]}")
         
         try:
             if stream:

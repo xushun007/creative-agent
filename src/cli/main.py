@@ -355,12 +355,7 @@ def chat(
     if approval:
         config.approval_policy = approval
     
-    # 验证配置
-    try:
-        config.validate()
-    except ValueError as e:
-        console.print(f"[red]配置错误: {e}[/red]")
-        raise typer.Exit(1)
+    # 配置已在初始化时自动验证，无需手动调用 validate()
     
     # 启动CLI
     cli = CodexCLI(config)
@@ -404,12 +399,17 @@ def config_init(
     sandbox = typer.prompt(
         "沙箱策略",
         default=config.sandbox_policy,
-        type=typer.Choice(["read_only", "workspace_write", "danger_full_access"])
+        type=typer.Choice(["strict", "workspace_write", "none"])
     )
     config.sandbox_policy = sandbox
     
-    # 保存配置
-    config.save_to_file(config_file)
+    # 保存配置为 JSON
+    import json
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_data = config.model_dump()
+    config_data["cwd"] = str(config_data["cwd"])
+    with open(config_file, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, indent=2, ensure_ascii=False)
     console.print(f"[green]配置已保存到: {config_file}[/green]")
 
 

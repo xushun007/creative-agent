@@ -261,7 +261,7 @@ class AgentTurn:
     async def _execute_tool_call(self, tool_call: ToolCallRequest, submission_id: str) -> ToolCallResponse:
         """执行单个工具调用"""
         try:
-            logger.info(f"执行工具调用: {tool_call}")
+            logger.info(f"准备执行工具调用: {tool_call}")
             
             # 创建工具执行上下文
             context = ToolContext(
