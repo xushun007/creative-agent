@@ -14,6 +14,7 @@ class CompactionContext:
     model_name: str
     session_id: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    model_client: Optional[Any] = None  # LLM客户端，用于生成摘要
 
 
 @dataclass

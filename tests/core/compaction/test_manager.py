@@ -26,7 +26,19 @@ class TestCompactionManager:
         return OpenCodeStrategy()
     
     @pytest.fixture
-    def context(self):
+    def mock_model_client(self):
+        """模拟model_client"""
+        class MockResponse:
+            content = "This is a test summary of the conversation."
+        
+        class MockModelClient:
+            async def _non_stream_completion(self, messages):
+                return MockResponse()
+        
+        return MockModelClient()
+    
+    @pytest.fixture
+    def context(self, mock_model_client):
         """创建测试上下文"""
         messages = [
             {"role": "user", "content": "Hello"},
@@ -40,7 +52,8 @@ class TestCompactionManager:
             current_tokens=100000,
             max_tokens=128000,
             model_name="gpt-4",
-            session_id="test-session"
+            session_id="test-session",
+            model_client=mock_model_client
         )
     
     def test_register_strategy(self, manager, strategy):
@@ -151,7 +164,7 @@ class TestCompactionManager:
         assert metrics.success_rate == 1.0
     
     @pytest.mark.asyncio
-    async def test_metrics_success_rate(self, manager, strategy):
+    async def test_metrics_success_rate(self, manager, strategy, mock_model_client):
         """测试：成功率计算"""
         manager.register_strategy("opencode", strategy)
         manager.set_strategy("opencode")
@@ -163,7 +176,8 @@ class TestCompactionManager:
                 current_tokens=100000,
                 max_tokens=128000,
                 model_name="gpt-4",
-                session_id=f"test-{i}"
+                session_id=f"test-{i}",
+                model_client=mock_model_client
             )
             await manager.check_and_compact(context)
         

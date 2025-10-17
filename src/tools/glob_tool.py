@@ -200,19 +200,11 @@ class GlobTool(BaseTool[Dict[str, Any]]):
             # 生成输出
             output_lines = []
             if final_files:
-                # 显示相对路径（如果可能）
+                # 始终返回绝对路径，避免LLM路径拼接错误
                 display_files = []
                 for file_path, _ in final_files:
-                    try:
-                        rel_path = os.path.relpath(file_path, search_path)
-                        # 如果相对路径更短，使用相对路径，否则使用绝对路径
-                        if len(rel_path) < len(file_path):
-                            display_files.append(rel_path)
-                        else:
-                            display_files.append(file_path)
-                    except ValueError:
-                        # 如果无法计算相对路径，使用绝对路径
-                        display_files.append(file_path)
+                    # 确保返回绝对路径
+                    display_files.append(os.path.abspath(file_path))
                 
                 output_lines.extend(display_files)
                 

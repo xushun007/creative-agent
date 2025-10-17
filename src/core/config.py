@@ -53,6 +53,16 @@ class Config(BaseSettings):
     max_turns: int = Field(default=20, ge=1, le=100, description="最大对话轮次")
     disable_response_storage: bool = Field(default=False, description="禁用响应存储")
     
+    # 消息压缩
+    enable_compaction: bool = Field(default=False, description="启用消息压缩")
+    max_context_tokens: int = Field(default=128000, ge=1000, description="最大上下文token数")
+    
+    # 压缩策略配置
+    compaction_prune_minimum: int = Field(default=5000, ge=1000, description="Prune最小阈值(tokens)")
+    compaction_prune_protect: int = Field(default=10000, ge=1000, description="Prune保护最近tokens")
+    compaction_protect_turns: int = Field(default=2, ge=0, le=10, description="压缩时保护最近对话轮数")
+    compaction_auto_threshold: float = Field(default=0.75, ge=0.1, le=1.0, description="自动压缩触发阈值")
+    
     # 日志
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
     

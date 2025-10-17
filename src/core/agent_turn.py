@@ -226,6 +226,7 @@ class AgentTurn:
                 # 执行工具调用
                 response = await self._execute_tool_call(tool_call, submission_id)
                 result.tool_responses.append(response)
+                logger.info(f"工具调用响应: {response}")
                 
                 # 添加工具结果到对话历史
                 result_text = response.result if response.success else response.error

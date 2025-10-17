@@ -3,7 +3,7 @@
 import asyncio
 from typing import List, Dict, Any, Optional, AsyncIterator
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -19,6 +19,31 @@ class Message:
     content: str
     tool_calls: Optional[List[Dict[str, Any]]] = None
     tool_call_id: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)  # 存储额外信息（summary, compacted_at等）
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典（包含所有字段和 metadata）"""
+        d = {"role": self.role, "content": self.content}
+        if self.tool_calls:
+            d["tool_calls"] = self.tool_calls
+        if self.tool_call_id:
+            d["tool_call_id"] = self.tool_call_id
+        if self.metadata:
+            d.update(self.metadata)
+        return d
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> 'Message':
+        """从字典反序列化（自动提取 metadata）"""
+        metadata = {k: v for k, v in d.items() 
+                   if k not in ["role", "content", "tool_calls", "tool_call_id"]}
+        return cls(
+            role=d.get("role", "user"),
+            content=d.get("content", ""),
+            tool_calls=d.get("tool_calls"),
+            tool_call_id=d.get("tool_call_id"),
+            metadata=metadata
+        )
 
 
 @dataclass

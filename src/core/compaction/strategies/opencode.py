@@ -24,8 +24,8 @@ class PruneResult:
 class OpenCodeStrategy(CompactionStrategy):
     """OpenCode 双层压缩策略"""
     
-    PRUNE_MINIMUM = 20_000
-    PRUNE_PROTECT = 40_000
+    PRUNE_MINIMUM = 5_000
+    PRUNE_PROTECT = 10_000
     PROTECT_TURNS = 2
     AUTO_COMPACT_THRESHOLD = 0.75
     
@@ -41,8 +41,8 @@ class OpenCodeStrategy(CompactionStrategy):
             return False
         usage_ratio = context.current_tokens / context.max_tokens
         should = usage_ratio >= self.auto_threshold
-        if should:
-            logger.info(f"触发压缩: {context.current_tokens}/{context.max_tokens} ({usage_ratio:.1%})")
+        compact_text = "触发压缩" if should else "不触发压缩"
+        logger.info(f"压缩状态: {compact_text}, {context.current_tokens}/{context.max_tokens} ({usage_ratio:.1%})")
         return should
     
     async def compact(self, context: CompactionContext, config: Optional[Dict[str, Any]] = None) -> CompactResult:
@@ -131,12 +131,12 @@ class OpenCodeStrategy(CompactionStrategy):
         
         new_messages = []
         
-        # 保留系统消息
+        # 1. 保留系统消息
         for msg in messages:
             if is_system_message(msg):
                 new_messages.append(msg)
         
-        # 添加摘要
+        # 2. 添加摘要
         new_messages.append({
             "role": "assistant",
             "content": summary_text,
@@ -144,26 +144,67 @@ class OpenCodeStrategy(CompactionStrategy):
             "timestamp": datetime.now().isoformat()
         })
         
-        # 添加恢复提示
+        # 3. 添加恢复提示
         new_messages.append({
             "role": "user",
             "content": "Use the above summary to continue our conversation from where we left off.",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "recovery_prompt": True
         })
         
-        # 添加摘要后的新消息
-        summary_idx = self._find_last_summary_index(messages)
-        if summary_idx != -1 and summary_idx < len(messages) - 1:
-            new_messages.extend(messages[summary_idx + 1:])
+        # 4. 保留最近 N 轮对话（根据 protect_turns 配置）
+        recent_messages = self._get_recent_turns(messages, self.protect_turns)
+        new_messages.extend(recent_messages)
+        
+        logger.info(f"压缩完成: 保留 {len(recent_messages)} 条最近消息（{self.protect_turns}轮对话）")
         
         return new_messages
+    
+    def _get_recent_turns(self, messages: List[Dict[str, Any]], n_turns: int) -> List[Dict[str, Any]]:
+        """获取最近 N 轮对话（user + assistant + tool 消息对）
+        
+        Args:
+            messages: 所有消息列表
+            n_turns: 要保留的对话轮数
+            
+        Returns:
+            最近 N 轮的消息列表
+        """
+        if n_turns <= 0:
+            return []
+        
+        recent = []
+        turn_count = 0
+        
+        # 从后向前遍历消息
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            role = msg.get("role", "")
+            
+            # 跳过系统消息、摘要和恢复提示
+            if (is_system_message(msg) or 
+                msg.get("summary") or 
+                msg.get("recovery_prompt")):
+                continue
+            
+            # 统计用户消息作为新一轮对话的标记
+            if role == "user":
+                turn_count += 1
+                if turn_count > n_turns:
+                    break
+            
+            # 插入到列表开头以保持原有顺序
+            recent.insert(0, msg)
+        
+        return recent
     
     def _filter_summarized(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """过滤已摘要的消息"""
         last_summary_idx = self._find_last_summary_index(messages)
         if last_summary_idx == -1:
             return [msg for msg in messages if not is_system_message(msg)]
-        return messages[last_summary_idx:]
+        # 跳过旧摘要本身，只返回摘要之后的新消息
+        return messages[last_summary_idx + 1:]
     
     def _find_last_summary_index(self, messages: List[Dict[str, Any]]) -> int:
         """查找最后一个摘要索引"""
@@ -173,24 +214,55 @@ class OpenCodeStrategy(CompactionStrategy):
         return -1
     
     async def _generate_summary(self, messages: List[Dict[str, Any]], context: CompactionContext) -> str:
-        """生成对话摘要（TODO: 调用LLM）"""
-        user_turns = count_user_turns(messages)
-        total_messages = len(messages)
+        """生成对话摘要（调用 LLM）"""
         
-        summary = f"""# Previous Conversation Summary
-
-This conversation had {user_turns} user interactions with {total_messages} total messages.
-
-## Key Points:
-- The conversation covered multiple topics
-- Various tools were used to assist with tasks
-- Progress was made on the discussed objectives
-
-## Context:
-Please continue based on the above summary and any new messages that follow."""
+        if not context.model_client:
+            raise ValueError("未提供 model_client，无法生成摘要")
         
-        logger.info(f"生成摘要: {user_turns} 轮对话, {total_messages} 条消息")
+        # 构建摘要请求消息
+        summary_messages = [
+            {"role": "system","content": "你是一个专业的对话摘要助手，擅长提取关键信息并生成简洁的摘要。"},
+            {"role": "user", "content": self._build_summary_prompt(messages)}
+        ]
+        
+        # 直接调用底层方法，不修改 conversation_history（避免并发问题）
+        response = await context.model_client._non_stream_completion(summary_messages)
+        summary = response.content
+        
+        if not summary or len(summary.strip()) < 10:
+            raise ValueError(f"LLM 返回的摘要过短: {len(summary.strip())} 字符")
+        
+        logger.info(f"生成摘要成功: {len(messages)} 条消息 → {len(summary)} 字符")
         return summary.strip()
+    
+    def _build_summary_prompt(self, messages: List[Dict[str, Any]]) -> str:
+        """构建摘要提示词（与 OpenCode 一致：不截断内容）"""
+        # OpenCode 的做法：完整传递所有消息，不做截断
+        # 对话范围已由 _filter_summarized 控制（只取最后一个摘要之后的消息）
+        conversation_lines = []
+        for msg in messages:
+            if is_system_message(msg):
+                continue
+            
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            conversation_lines.append(f"[{role}]: {content}")
+        
+        conversation_text = "\n".join(conversation_lines)
+        
+        # 使用与 OpenCode 相同的提示词
+        return f"""Provide a detailed but concise summary of our conversation above.
+
+Focus on information that would be helpful for continuing the conversation, including:
+- What we did
+- What we're doing
+- Which files we're working on
+- What we're going to do next
+
+Conversation:
+{conversation_text}
+
+Please provide the summary in Chinese:"""
     
     def get_metadata(self) -> StrategyMetadata:
         return StrategyMetadata(

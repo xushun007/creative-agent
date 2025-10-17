@@ -2,15 +2,19 @@
 
 import asyncio
 import json
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import uuid
 
 from .protocol import (
     Submission, Event, EventMsg, Op, TokenUsage
 )
 from .config import Config
-from .model_client import ModelClient
+from .model_client import Message, ModelClient
 from .event_handler import EventHandler
+from .compaction.manager import CompactionManager
+from .compaction.strategies.opencode import OpenCodeStrategy
+from .compaction.base import CompactionContext
+from utils.logger import logger
 
 
 class Session:
@@ -40,6 +44,20 @@ class Session:
         
         # Token统计
         self.total_token_usage = TokenUsage()
+        
+        # 消息压缩管理器（可选）
+        self.compaction_manager: Optional[CompactionManager] = None
+        if getattr(config, 'enable_compaction', False):
+            # 从Config读取压缩配置
+            strategy_config = {
+                "prune_minimum": getattr(config, 'compaction_prune_minimum', 5000),
+                "prune_protect": getattr(config, 'compaction_prune_protect', 10000),
+                "protect_turns": getattr(config, 'compaction_protect_turns', 2),
+                "auto_threshold": getattr(config, 'compaction_auto_threshold', 0.75),
+            }
+            self.compaction_manager = CompactionManager()
+            self.compaction_manager.register_strategy("opencode", OpenCodeStrategy(strategy_config))
+            self.compaction_manager.set_strategy("opencode")
     
     
     async def start(self):
@@ -143,6 +161,9 @@ class Session:
                 if not turn_result.has_tool_calls():
                     break
                 
+                # 每轮后检查并执行消息压缩
+                await self._check_and_compact(submission.id)
+                
                 # 继续下一轮对话
                 turn_count += 1
                 
@@ -204,3 +225,39 @@ class Session:
             self.session_id, 
             EventMsg.token_count(self.total_token_usage)
         ))
+    
+    
+    async def _check_and_compact(self, submission_id: str):
+        """检查并执行消息压缩"""
+        if not self.compaction_manager:
+            return
+        
+        try:
+            messages = [msg.to_dict() for msg in self.model_client.conversation_history]
+            current_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
+            
+            context = CompactionContext(
+                messages=messages,
+                current_tokens=current_tokens,
+                max_tokens=getattr(self.config, 'max_context_tokens', 128000),
+                model_name=self.config.model,
+                session_id=self.session_id,
+                model_client=self.model_client
+            )
+            
+            result = await self.compaction_manager.check_and_compact(context)
+            
+            if result and result.success:
+                self.model_client.conversation_history = [
+                    Message.from_dict(msg) for msg in result.new_messages
+                ]
+                
+                await self.event_handler.emit(submission_id, EventMsg("compaction_complete", {
+                    "removed_count": result.removed_count,
+                    "tokens_saved": result.tokens_saved,
+                    "strategy": result.strategy_name
+                }))
+        
+        except Exception as e:
+            # 压缩失败不应影响正常流程，只记录日志
+            logger.warning(f"消息压缩失败: {e}")

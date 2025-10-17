@@ -25,6 +25,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.mb
 
 # Logs
 logs
@@ -36,3 +37,8 @@ workspace
 # Temporary files
 test.py
 CR-20250929.md
+
+refs/
+doc/
+
+uv.lock
