@@ -14,22 +14,44 @@ from .event_handler import EventHandler
 from .compaction.manager import CompactionManager
 from .compaction.strategies.opencode import OpenCodeStrategy
 from .compaction.base import CompactionContext
+from .memory import MemoryManager, MemoryMessage
 from utils.logger import logger
 
 
 class Session:
     """Codex会话"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, memory_manager: Optional[MemoryManager] = None):
         self.config = config
-        self.session_id = str(uuid.uuid4())
         
         # 集成工具注册系统
         from tools.registry import get_global_registry
         self.tool_registry = get_global_registry()
         
-        # 创建模型客户端，传入工具注册器以便自动设置系统消息
-        self.model_client = ModelClient(config, self.tool_registry)
+        # 记忆管理器（可选）- 支持传入已恢复的 memory_manager
+        self.memory_manager: Optional[MemoryManager] = memory_manager
+        if self.memory_manager:
+            # 使用传入的 memory_manager（已恢复的会话）
+            self.session_id = self.memory_manager.session_id
+            logger.info(f"使用已恢复的会话: {self.session_id}, 消息数: {len(self.memory_manager.messages)}")
+        else:
+            # 创建新会话
+            self.session_id = str(uuid.uuid4())
+            if getattr(config, 'enable_memory', True):
+                self.memory_manager = MemoryManager(
+                    session_dir=config.session_dir,
+                    session_id=self.session_id,  # 由 Session 传入
+                    cwd=config.cwd,
+                    model=config.model,
+                    config=config,  # 传入完整配置
+                    tool_registry=self.tool_registry,  # 传入工具注册器
+                    user_instructions=config.user_instructions,
+                    auto_load_project_docs=getattr(config, 'auto_load_project_docs', True)
+                )
+                logger.info(f"记忆系统已启用，会话ID: {self.session_id}, 存储路径: {self.memory_manager.rollout_path}")
+        
+        # 创建模型客户端，传入工具注册器和记忆管理器
+        self.model_client = ModelClient(config, self.tool_registry, self.memory_manager)
         
         # 队列
         self.submission_queue = asyncio.Queue()
@@ -228,13 +250,18 @@ class Session:
     
     
     async def _check_and_compact(self, submission_id: str):
-        """检查并执行消息压缩"""
+        """检查并执行消息压缩（与 MemoryManager 集成）"""
         if not self.compaction_manager:
             return
         
         try:
-            messages = [msg.to_dict() for msg in self.model_client.conversation_history]
-            current_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
+            # 从 memory_manager 或 model_client 获取消息
+            if self.memory_manager:
+                messages = self.memory_manager.get_context_for_llm()
+                current_tokens = self.memory_manager.get_stats()["estimated_tokens"]
+            else:
+                messages = [msg.to_dict() for msg in self.model_client.conversation_history]
+                current_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
             
             context = CompactionContext(
                 messages=messages,
@@ -248,15 +275,38 @@ class Session:
             result = await self.compaction_manager.check_and_compact(context)
             
             if result and result.success:
-                self.model_client.conversation_history = [
-                    Message.from_dict(msg) for msg in result.new_messages
-                ]
+                # 更新消息历史
+                if self.memory_manager:
+                    from .memory import MemoryMessage
+                    from datetime import datetime
+                    # 将压缩后的消息转换回 MemoryMessage
+                    new_messages = [
+                        MemoryMessage.from_dict(msg) if not isinstance(msg, MemoryMessage) 
+                        else msg
+                        for msg in result.new_messages
+                    ]
+                    self.memory_manager.replace_messages(new_messages)
+                    
+                    # 记录压缩操作
+                    self.memory_manager.record_compaction(
+                        summary=f"压缩完成：删除 {result.removed_count} 条消息",
+                        original_count=result.removed_count,
+                        tokens_saved=result.tokens_saved,
+                        strategy=result.strategy_name
+                    )
+                else:
+                    self.model_client.conversation_history = [
+                        Message.from_dict(msg) for msg in result.new_messages
+                    ]
                 
+                # 发送压缩完成事件
                 await self.event_handler.emit(submission_id, EventMsg("compaction_complete", {
                     "removed_count": result.removed_count,
                     "tokens_saved": result.tokens_saved,
                     "strategy": result.strategy_name
                 }))
+                
+                logger.info(f"压缩完成：删除 {result.removed_count} 条消息，节省 {result.tokens_saved} tokens")
         
         except Exception as e:
             # 压缩失败不应影响正常流程，只记录日志

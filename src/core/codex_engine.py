@@ -13,18 +13,19 @@ from utils.logger import logger
 class CodexEngine:
     """Codex核心引擎"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, memory_manager=None):
         self.config = config
         self.session: Optional[Session] = None
         self._running = False
+        self._memory_manager = memory_manager  # 保存恢复的 memory_manager
     
     async def start(self) -> Session:
         """启动Codex引擎"""
         if self.session:
             await self.session.stop()
         
-        # 创建新会话
-        self.session = Session(self.config)
+        # 创建新会话（或使用恢复的会话）
+        self.session = Session(self.config, memory_manager=self._memory_manager)
         await self.session.start()
         
         # 启动会话处理循环

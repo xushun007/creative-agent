@@ -53,6 +53,14 @@ class Config(BaseSettings):
     max_turns: int = Field(default=20, ge=1, le=100, description="最大对话轮次")
     disable_response_storage: bool = Field(default=False, description="禁用响应存储")
     
+    # 记忆系统
+    enable_memory: bool = Field(default=True, description="启用记忆持久化")
+    session_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".ctv-agent" / "sessions",
+        description="会话存储目录"
+    )
+    auto_load_project_docs: bool = Field(default=True, description="自动加载项目文档（AGENTS.md）")
+    
     # 消息压缩
     enable_compaction: bool = Field(default=False, description="启用消息压缩")
     max_context_tokens: int = Field(default=128000, ge=1000, description="最大上下文token数")

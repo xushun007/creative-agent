@@ -15,6 +15,7 @@ from rich.prompt import Prompt, Confirm
 
 from core import Config, CodexEngine
 from core.protocol import Event, EventMsg
+from core.memory import MemoryManager
 
 
 # 全局变量
@@ -25,20 +26,22 @@ app = typer.Typer(name="codex", help="Codex - AI编程助手")
 class CodexCLI:
     """Codex CLI控制器"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, memory_manager=None):
         self.config = config
         self.engine: Optional[CodexEngine] = None
         self.running = False
         self.pending_approvals = {}
+        self._memory_manager = memory_manager  # 恢复的 memory_manager
     
     async def start(self):
         """启动CLI"""
         try:
-            # 启动引擎
-            self.engine = CodexEngine(self.config)
+            # 启动引擎（传入恢复的 memory_manager）
+            self.engine = CodexEngine(self.config, memory_manager=self._memory_manager)
             await self.engine.start()
             
-            self.show_start_UI()
+            # 显示启动 UI（标记是否为恢复的会话）
+            self.show_start_UI(resumed=self._memory_manager is not None)
             
             self.running = True
             
@@ -62,15 +65,28 @@ class CodexCLI:
         finally:
             await self.stop()
 
-    def show_start_UI(self):
+    def show_start_UI(self, resumed: bool = False):
         """显示启动UI"""
-        console.print(Panel.fit(
-            f"[bold green]Codex Python 已启动[/bold green]\n"
-            f"模型: {self.config.model}\n"
-            f"工作目录: {self.config.cwd}\n"
-            f"沙箱策略: {self.config.sandbox_policy}",
-            title="🤖 Codex"
-        ))
+        if resumed:
+            session_id = self.engine.session.session_id if self.engine and self.engine.session else "unknown"
+            console.print(Panel.fit(
+                f"[bold green]✨ 会话已恢复[/bold green]\n"
+                f"会话 ID: {session_id[:8]}...\n"
+                f"模型: {self.config.model}\n"
+                f"工作目录: {self.config.cwd}\n"
+                f"记忆系统: [green]已启用[/green]",
+                title="🔄 Codex Resume"
+            ))
+        else:
+            memory_status = "[green]已启用[/green]" if getattr(self.config, 'enable_memory', True) else "[dim]已禁用[/dim]"
+            console.print(Panel.fit(
+                f"[bold green]Codex Python 已启动[/bold green]\n"
+                f"模型: {self.config.model}\n"
+                f"工作目录: {self.config.cwd}\n"
+                f"沙箱策略: {self.config.sandbox_policy}\n"
+                f"记忆系统: {memory_status}",
+                title="🤖 Codex"
+            ))
 
     async def stop(self):
         """停止CLI"""
@@ -336,8 +352,56 @@ def chat(
     cwd: Optional[Path] = typer.Option(None, "--cwd", help="工作目录"),
     sandbox: Optional[str] = typer.Option("workspace_write", "--sandbox", "-s", help="沙箱策略"),
     approval: Optional[str] = typer.Option("on_request", "--approval", "-a", help="批准策略"),
+    resume_session: Optional[str] = typer.Option(None, "--resume", "-r", help="恢复指定会话ID"),
 ):
     """启动Codex聊天模式"""
+    
+    # 恢复会话逻辑
+    memory_manager = None
+    if resume_session:
+        session_dir = Path.home() / ".ctv-agent" / "sessions"
+        if not session_dir.exists():
+            console.print(f"[red]会话目录不存在: {session_dir}[/red]")
+            return
+        
+        # 列出所有会话并查找匹配的
+        all_sessions = MemoryManager.list_sessions(session_dir)
+        if not all_sessions:
+            console.print(f"[yellow]未找到任何会话记录[/yellow]")
+            return
+        
+        # 查找匹配的会话
+        rollout_path = None
+        session_meta = None
+        for path, meta in all_sessions:
+            if meta.session_id.startswith(resume_session):
+                rollout_path = path
+                session_meta = meta
+                break
+        
+        if not rollout_path:
+            console.print(f"[red]未找到会话 ID: {resume_session}[/red]")
+            console.print(f"[dim]使用 'codex sessions' 查看所有会话[/dim]")
+            return
+        
+        # 显示会话信息
+        console.print(Panel.fit(
+            f"[bold]会话 ID:[/bold] {session_meta.session_id[:16]}...\n"
+            f"[bold]创建时间:[/bold] {session_meta.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"[bold]模型:[/bold] {session_meta.model}\n"
+            f"[bold]工作目录:[/bold] {session_meta.cwd}",
+            title="📂 恢复会话",
+            border_style="cyan"
+        ))
+        
+        # 恢复会话
+        try:
+            memory_manager = MemoryManager.resume_session(rollout_path)
+            stats = memory_manager.get_stats()
+            console.print(f"[green]✅ 已加载 {stats['total_messages']} 条消息[/green]")
+        except Exception as e:
+            console.print(f"[red]恢复会话失败: {e}[/red]")
+            return
     
     # 加载配置
     if config_file and config_file.exists():
@@ -357,8 +421,8 @@ def chat(
     
     # 配置已在初始化时自动验证，无需手动调用 validate()
     
-    # 启动CLI
-    cli = CodexCLI(config)
+    # 启动CLI（传入恢复的 memory_manager）
+    cli = CodexCLI(config, memory_manager=memory_manager)
     
     # 设置信号处理
     def signal_handler(signum, frame):
@@ -376,8 +440,168 @@ def chat(
 
 
 @app.command()
+def sessions(
+    session_dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="会话存储目录"),
+    limit: int = typer.Option(10, "--limit", "-n", help="显示最近N个会话"),
+):
+    """列出所有历史会话"""
+    
+    # 确定会话目录
+    if not session_dir:
+        session_dir = Path.home() / ".ctv-agent" / "sessions"
+    
+    if not session_dir.exists():
+        console.print(f"[yellow]会话目录不存在: {session_dir}[/yellow]")
+        return
+    
+    # 列出所有会话
+    try:
+        all_sessions = MemoryManager.list_sessions(session_dir)
+        
+        if not all_sessions:
+            console.print(f"[yellow]未找到任何会话记录[/yellow]")
+            console.print(f"[dim]会话目录: {session_dir}[/dim]")
+            return
+        
+        # 限制显示数量
+        sessions_to_show = all_sessions[:limit]
+        
+        console.print(f"\n[bold cyan]最近 {len(sessions_to_show)} 个会话:[/bold cyan]\n")
+        
+        from rich.table import Table
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("序号", style="dim", width=4)
+        table.add_column("会话 ID", style="cyan")
+        table.add_column("创建时间", style="green")
+        table.add_column("模型", style="yellow")
+        table.add_column("工作目录", style="blue")
+        
+        for i, (rollout_path, meta) in enumerate(sessions_to_show, 1):
+            session_id_short = meta.session_id[:8] + "..."
+            created_at = meta.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            cwd_short = str(Path(meta.cwd).name) if meta.cwd else "N/A"
+            
+            table.add_row(
+                str(i),
+                session_id_short,
+                created_at,
+                meta.model,
+                cwd_short
+            )
+        
+        console.print(table)
+        console.print(f"\n[dim]总计: {len(all_sessions)} 个会话[/dim]")
+        console.print(f"[dim]会话目录: {session_dir}[/dim]")
+        
+        if len(all_sessions) > limit:
+            console.print(f"[dim]使用 --limit 选项查看更多会话[/dim]")
+        
+        console.print(f"\n[bold]恢复会话:[/bold] codex resume --session-id <session_id>")
+        
+    except Exception as e:
+        console.print(f"[red]列出会话失败: {e}[/red]")
+
+
+@app.command()
+def resume(
+    session_id: Optional[str] = typer.Option(None, "--session-id", "-s", help="会话ID（可选，留空则选择最近的会话）"),
+    session_dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="会话存储目录"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="AI模型名称（可选）"),
+):
+    """恢复之前的会话并进入聊天模式"""
+    
+    # 确定会话目录
+    if not session_dir:
+        session_dir = Path.home() / ".ctv-agent" / "sessions"
+    
+    if not session_dir.exists():
+        console.print(f"[red]会话目录不存在: {session_dir}[/red]")
+        return
+    
+    try:
+        # 列出所有会话
+        all_sessions = MemoryManager.list_sessions(session_dir)
+        
+        if not all_sessions:
+            console.print(f"[yellow]未找到任何会话记录[/yellow]")
+            return
+        
+        # 查找目标会话
+        rollout_path = None
+        session_meta = None
+        
+        if session_id:
+            # 根据 session_id 查找
+            for path, meta in all_sessions:
+                if meta.session_id.startswith(session_id):
+                    rollout_path = path
+                    session_meta = meta
+                    break
+            
+            if not rollout_path:
+                console.print(f"[red]未找到会话 ID: {session_id}[/red]")
+                console.print(f"[dim]使用 'codex sessions' 查看所有会话[/dim]")
+                return
+        else:
+            # 选择最近的会话
+            rollout_path, session_meta = all_sessions[0]
+            console.print(f"[cyan]使用最近的会话: {session_meta.session_id[:8]}...[/cyan]")
+        
+        # 显示会话信息
+        console.print(Panel.fit(
+            f"[bold]会话 ID:[/bold] {session_meta.session_id[:16]}...\n"
+            f"[bold]创建时间:[/bold] {session_meta.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"[bold]模型:[/bold] {session_meta.model}\n"
+            f"[bold]工作目录:[/bold] {session_meta.cwd}",
+            title="📂 会话信息",
+            border_style="cyan"
+        ))
+        
+        # 确认是否恢复
+        if not Confirm.ask("是否恢复此会话并进入聊天模式?", default=True):
+            console.print("[yellow]已取消[/yellow]")
+            return
+        
+        # 恢复会话
+        console.print("[cyan]正在恢复会话...[/cyan]")
+        memory_manager = MemoryManager.resume_session(rollout_path)
+        
+        stats = memory_manager.get_stats()
+        console.print(f"[green]✅ 已加载 {stats['total_messages']} 条消息[/green]\n")
+        
+        # 创建配置（使用恢复的会话信息）
+        config = Config(
+            model=model or session_meta.model,
+            cwd=Path(session_meta.cwd),
+            enable_memory=True,
+            session_dir=session_dir,
+        )
+        
+        # 启动CLI（传入恢复的 memory_manager）
+        cli = CodexCLI(config, memory_manager=memory_manager)
+        
+        # 设置信号处理
+        def signal_handler(signum, frame):
+            console.print("\n[yellow]收到中断信号，正在关闭...[/yellow]")
+            cli.running = False
+            raise KeyboardInterrupt()
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        try:
+            asyncio.run(cli.start())
+        except KeyboardInterrupt:
+            pass
+        
+    except Exception as e:
+        console.print(f"[red]恢复会话失败: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+
+@app.command()
 def config_init(
-    config_file: Path = typer.Option(Path.home() / ".codex" / "config.json", "--output", "-o"),
+    config_file: Path = typer.Option(Path.home() / ".ctv-agent" / "config.json", "--output", "-o"),
 ):
     """初始化配置文件"""
     

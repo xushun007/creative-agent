@@ -57,41 +57,98 @@ class ChatResponse:
 
 
 class ModelClient:
-    """AI模型客户端"""
+    """AI模型客户端（集成记忆管理）
     
-    def __init__(self, config: Config, tool_registry=None):
+    设计：
+    - 如果提供了 memory_manager，则使用其管理对话历史
+    - 否则，使用内部的 conversation_history（回退模式）
+    """
+    
+    def __init__(self, config: Config, tool_registry=None, memory_manager=None):
         self.config = config
         self.client = AsyncOpenAI(
             api_key=config.api_key,
             base_url=config.api_base
         )
+        
+        # 记忆管理器（可选）
+        self.memory_manager = memory_manager
+        
+        # 回退：内部对话历史（当没有 memory_manager 时使用）
         self.conversation_history: List[Message] = []
+        
         self.tool_registry = tool_registry
         
         self._setup_system_messages()
     
     def add_system_message(self, content: str):
         """添加系统消息"""
+        if self.memory_manager:
+            from .memory import MemoryMessage
+            from datetime import datetime
+            # 注意：MemoryManager 已在初始化时添加了系统消息（包含项目文档）
+            # 这里只在非 memory_manager 模式下使用
+            pass
         self.conversation_history.append(Message("system", content))
     
     def add_user_message(self, content: str):
         """添加用户消息"""
-        self.conversation_history.append(Message("user", content))
+        if self.memory_manager:
+            self.memory_manager.add_user_message(content)
+        else:
+            self.conversation_history.append(Message("user", content))
     
     def add_assistant_message(self, content: str, tool_calls: Optional[List[Dict[str, Any]]] = None):
         """添加助手消息"""
-        self.conversation_history.append(Message("assistant", content, tool_calls))
+        if self.memory_manager:
+            self.memory_manager.add_assistant_message(content, tool_calls)
+        else:
+            self.conversation_history.append(Message("assistant", content, tool_calls))
     
     def add_tool_message(self, tool_call_id: str, content: str):
         """添加工具调用结果消息"""
-        self.conversation_history.append(Message("tool", content, tool_call_id=tool_call_id))
+        if self.memory_manager:
+            self.memory_manager.add_tool_message(content, tool_call_id)
+        else:
+            self.conversation_history.append(Message("tool", content, tool_call_id=tool_call_id))
     
     def clear_history(self):
         """清空对话历史"""
-        self.conversation_history.clear()
+        if self.memory_manager:
+            self.memory_manager.replace_messages([])
+        else:
+            self.conversation_history.clear()
+    
+    def get_messages(self) -> List[Message]:
+        """获取消息列表（统一接口）"""
+        if self.memory_manager:
+            # 从 MemoryMessage 转换为 Message
+            from datetime import datetime
+            return [
+                Message(
+                    role=msg.role,
+                    content=msg.content,
+                    tool_calls=msg.tool_calls,
+                    tool_call_id=msg.tool_call_id,
+                    metadata=msg.metadata
+                )
+                for msg in self.memory_manager.messages
+            ]
+        else:
+            return self.conversation_history
     
     def _setup_system_messages(self):
-        """设置系统消息 - 内聚在ModelClient中"""
+        """设置系统消息 - 内聚在ModelClient中
+        
+        注意：
+        - 如果启用了 memory_manager，系统消息（包括项目文档）已在 MemoryManager 初始化时添加
+        - 这里只在非 memory_manager 模式下添加系统消息
+        """
+        # 如果使用记忆管理器，跳过（MemoryManager 已处理）
+        if self.memory_manager:
+            logger.debug("使用记忆管理器，跳过 ModelClient 中的系统消息设置")
+            return
+        
         # 从prompt文件读取基础系统提示词
         try:
             prompt_file = Path(__file__).parent.parent / "prompt" / "ctv-claude-code-system-prompt-zh.txt"
@@ -154,8 +211,11 @@ class ModelClient:
     
     async def chat_completion(self, stream: bool = False) -> ChatResponse:
         """发送聊天完成请求"""
+        # 获取消息（统一接口）
+        history = self.get_messages()
+        
         messages = []
-        for msg in self.conversation_history:
+        for msg in history:
             message_dict = {
                 "role": msg.role,
                 "content": msg.content
@@ -171,7 +231,7 @@ class ModelClient:
             
             messages.append(message_dict)
 
-        logger.debug(f"发送消息到模型: {messages[1:]}")
+        logger.debug(f"发送消息到模型: {len(messages)} 条")
         
         try:
             if stream:
