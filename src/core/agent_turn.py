@@ -2,13 +2,14 @@
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from .protocol import Event, EventMsg, TokenUsage
 from .model_client import ModelClient, ChatResponse
 from .event_handler import EventHandler
+from .hooks import HookProvider
 from tools.base_tool import ToolContext, ToolResult
 from tools.registry import ToolRegistry
 from utils.logger import logger
@@ -105,11 +106,13 @@ class AgentTurn:
                  model_client: ModelClient,
                  tool_registry: ToolRegistry,
                  event_handler: Optional[EventHandler] = None,
-                 session_id: str = "default"):
+                 session_id: str = "default",
+                 hook_provider: Optional[HookProvider] = None):
         self.model_client = model_client
         self.tool_registry = tool_registry
         self.event_handler = event_handler  # 可以为None，不强制要求
         self.session_id = session_id
+        self.hook_provider = hook_provider
         
         # 批准机制相关
         self.approval_pending: Dict[str, Dict[str, Any]] = {}
@@ -117,6 +120,13 @@ class AgentTurn:
     async def execute_turn(self, submission_id: str) -> AgentTurnResult:
         """执行一个完整的代理回合"""
         start_time = datetime.now()
+        if self.hook_provider:
+            self.hook_provider.emit_named(
+                "turn.start",
+                self.session_id,
+                submission_id,
+                {},
+            )
         
         try:
             # 1. 调用LLM获取响应
@@ -162,6 +172,19 @@ class AgentTurn:
             result.duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
             logger.info(f"AgentTurn执行完成，耗时: {result.duration_ms}ms")
+            if self.hook_provider:
+                token_usage_payload = asdict(result.token_usage) if result.token_usage else None
+                self.hook_provider.emit_named(
+                    "turn.complete",
+                    self.session_id,
+                    submission_id,
+                    {
+                        "duration_ms": result.duration_ms,
+                        "finish_reason": result.finish_reason,
+                        "token_usage": token_usage_payload,
+                        "tool_calls": len(result.tool_calls),
+                    },
+                )
             return result
             
         except Exception as e:
@@ -169,6 +192,13 @@ class AgentTurn:
             # 发送错误事件
             if self.event_handler:
                 await self.event_handler.emit_error(submission_id, f"回合执行失败: {str(e)}")
+            if self.hook_provider:
+                self.hook_provider.emit_named(
+                    "error",
+                    self.session_id,
+                    submission_id,
+                    {"message": str(e), "stage": "execute_turn"},
+                )
             
             # 返回错误结果
             end_time = datetime.now()
@@ -217,6 +247,17 @@ class AgentTurn:
                     await self.event_handler.emit_tool_start(
                         submission_id, tool_call.name, tool_call.call_id, tool_call.args
                     )
+                if self.hook_provider:
+                    self.hook_provider.emit_named(
+                        "tool.start",
+                        self.session_id,
+                        submission_id,
+                        {
+                            "tool_name": tool_call.name,
+                            "call_id": tool_call.call_id,
+                            "arguments": tool_call.args,
+                        },
+                    )
                 
                 # 检查是否需要用户批准
                 if await self._needs_approval(tool_call.name, tool_call.args):
@@ -240,6 +281,19 @@ class AgentTurn:
                         result_text if response.success else None,
                         response.error if not response.success else None
                     )
+                if self.hook_provider:
+                    self.hook_provider.emit_named(
+                        "tool.complete",
+                        self.session_id,
+                        submission_id,
+                        {
+                            "tool_name": tool_call.name,
+                            "call_id": tool_call.call_id,
+                            "success": response.success,
+                            "result": result_text if response.success else None,
+                            "error": response.error if not response.success else None,
+                        },
+                    )
                 
             except Exception as e:
                 error_response = ToolCallResponse(
@@ -257,6 +311,19 @@ class AgentTurn:
                     await self.event_handler.emit_tool_end(
                         submission_id, tool_call.name, tool_call.call_id,
                         False, None, str(e)
+                    )
+                if self.hook_provider:
+                    self.hook_provider.emit_named(
+                        "tool.complete",
+                        self.session_id,
+                        submission_id,
+                        {
+                            "tool_name": tool_call.name,
+                            "call_id": tool_call.call_id,
+                            "success": False,
+                            "result": None,
+                            "error": str(e),
+                        },
                     )
     
     async def _execute_tool_call(self, tool_call: ToolCallRequest, submission_id: str) -> ToolCallResponse:

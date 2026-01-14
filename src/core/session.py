@@ -11,6 +11,7 @@ from .protocol import (
 from .config import Config
 from .model_client import Message, ModelClient
 from .event_handler import EventHandler
+from .hooks import get_hook_provider
 from .compaction.manager import CompactionManager
 from .compaction.strategies.opencode import OpenCodeStrategy
 from .compaction.base import CompactionContext
@@ -58,6 +59,10 @@ class Session:
         
         # 统一事件处理器 - 内部管理event_queue
         self.event_handler = EventHandler()
+
+        # Hook provider
+        self.hook_provider = get_hook_provider()
+        self.hook_provider.set_disabled(not getattr(config, "enable_hooks", False))
         
         # 会话状态
         self.is_active = False
@@ -92,6 +97,12 @@ class Session:
             "model": self.config.model,
             "cwd": str(self.config.cwd)
         }))
+        self.hook_provider.emit_named(
+            "session.start",
+            self.session_id,
+            None,
+            {"model": self.config.model, "cwd": str(self.config.cwd)},
+        )
     
     async def stop(self):
         """停止会话"""
@@ -99,6 +110,7 @@ class Session:
         
         # 发送会话结束事件
         await self.event_handler.emit(self.session_id, EventMsg("shutdown_complete", {}))
+        self.hook_provider.emit_named("session.stop", self.session_id, None, {})
     
     async def submit_operation(self, op: Op) -> str:
         """提交操作"""
@@ -123,6 +135,12 @@ class Session:
             except Exception as e:
                 submission_id = submission.id if 'submission' in locals() else "unknown"
                 await self.event_handler.emit_error(submission_id, f"处理提交时出错: {str(e)}")
+                self.hook_provider.emit_named(
+                    "error",
+                    self.session_id,
+                    submission_id if submission_id != "unknown" else None,
+                    {"message": str(e), "stage": "process_submissions"},
+                )
     
     async def _handle_submission(self, submission: Submission):
         """处理单个提交"""
@@ -143,6 +161,7 @@ class Session:
         
         # 发送任务开始事件
         await self.event_handler.emit_task_started(submission.id)
+        self.hook_provider.emit_named("task.start", self.session_id, submission.id, {})
         
         # 添加用户消息到对话历史
         if op.items:
@@ -158,18 +177,21 @@ class Session:
             model_client=self.model_client,
             tool_registry=self.tool_registry,
             event_handler=self.event_handler,
-            session_id=self.session_id
+            session_id=self.session_id,
+            hook_provider=self.hook_provider,
         )
         
         # ReAct 循环：持续对话直到任务完成
         max_turns = self.config.max_turns  # 防止无限循环
         turn_count = 0
+        turns_executed = 0
         last_agent_message = None
         
         while turn_count < max_turns:
             try:
                 # 执行一个AgentTurn
                 turn_result = await agent_turn.execute_turn(submission.id)
+                turns_executed += 1
                 
                 # 更新token使用统计
                 if turn_result.token_usage:
@@ -199,11 +221,26 @@ class Session:
                 submission.id, 
                 f"任务执行达到最大轮次限制 ({max_turns})，可能存在循环"
             )
+            self.hook_provider.emit_named(
+                "error",
+                self.session_id,
+                submission.id,
+                {"message": "max_turns_reached", "max_turns": max_turns},
+            )
         
         # 发送任务完成事件
         await self.event_handler.emit_task_complete(
             submission.id, 
             last_agent_message or "任务已完成"
+        )
+        self.hook_provider.emit_named(
+            "task.complete",
+            self.session_id,
+            submission.id,
+            {
+                "last_message": last_agent_message or "任务已完成",
+                "turns": turns_executed,
+            },
         )
     
     

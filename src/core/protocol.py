@@ -89,6 +89,15 @@ class TokenUsage:
     def is_zero(self) -> bool:
         return self.total_tokens == 0
 
+    def model_dump(self) -> Dict[str, Any]:
+        """兼容pydantic的导出接口。"""
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+        }
+
 
 @dataclass
 class EventMsg:
