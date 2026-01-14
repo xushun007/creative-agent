@@ -97,10 +97,8 @@ class Session:
             "model": self.config.model,
             "cwd": str(self.config.cwd)
         }))
-        self.hook_provider.emit_named(
-            "session.start",
+        self.hook_provider.on_session_start(
             self.session_id,
-            None,
             {"model": self.config.model, "cwd": str(self.config.cwd)},
         )
     
@@ -110,7 +108,7 @@ class Session:
         
         # 发送会话结束事件
         await self.event_handler.emit(self.session_id, EventMsg("shutdown_complete", {}))
-        self.hook_provider.emit_named("session.stop", self.session_id, None, {})
+        self.hook_provider.on_session_stop(self.session_id, {})
     
     async def submit_operation(self, op: Op) -> str:
         """提交操作"""
@@ -135,8 +133,7 @@ class Session:
             except Exception as e:
                 submission_id = submission.id if 'submission' in locals() else "unknown"
                 await self.event_handler.emit_error(submission_id, f"处理提交时出错: {str(e)}")
-                self.hook_provider.emit_named(
-                    "error",
+                self.hook_provider.on_error(
                     self.session_id,
                     submission_id if submission_id != "unknown" else None,
                     {"message": str(e), "stage": "process_submissions"},
@@ -161,7 +158,7 @@ class Session:
         
         # 发送任务开始事件
         await self.event_handler.emit_task_started(submission.id)
-        self.hook_provider.emit_named("task.start", self.session_id, submission.id, {})
+        self.hook_provider.on_task_start(self.session_id, submission.id, {})
         
         # 添加用户消息到对话历史
         if op.items:
@@ -221,8 +218,7 @@ class Session:
                 submission.id, 
                 f"任务执行达到最大轮次限制 ({max_turns})，可能存在循环"
             )
-            self.hook_provider.emit_named(
-                "error",
+            self.hook_provider.on_error(
                 self.session_id,
                 submission.id,
                 {"message": "max_turns_reached", "max_turns": max_turns},
@@ -233,8 +229,7 @@ class Session:
             submission.id, 
             last_agent_message or "任务已完成"
         )
-        self.hook_provider.emit_named(
-            "task.complete",
+        self.hook_provider.on_task_complete(
             self.session_id,
             submission.id,
             {

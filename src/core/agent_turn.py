@@ -121,16 +121,17 @@ class AgentTurn:
         """执行一个完整的代理回合"""
         start_time = datetime.now()
         if self.hook_provider:
-            self.hook_provider.emit_named(
-                "turn.start",
-                self.session_id,
-                submission_id,
-                {},
-            )
+            self.hook_provider.on_turn_start(self.session_id, submission_id, {})
         
         try:
             # 1. 调用LLM获取响应
             logger.info("开始Turn LLM调用")
+            if self.hook_provider:
+                self.hook_provider.on_llm_start(
+                    self.session_id,
+                    submission_id,
+                    {"model": self.model_client.config.model},
+                )
             llm_response = await self.model_client.chat_completion()
             
             # 2. 解析LLM响应
@@ -174,8 +175,15 @@ class AgentTurn:
             logger.info(f"AgentTurn执行完成，耗时: {result.duration_ms}ms")
             if self.hook_provider:
                 token_usage_payload = asdict(result.token_usage) if result.token_usage else None
-                self.hook_provider.emit_named(
-                    "turn.complete",
+                self.hook_provider.on_llm_complete(
+                    self.session_id,
+                    submission_id,
+                    {
+                        "finish_reason": result.finish_reason,
+                        "token_usage": token_usage_payload,
+                    },
+                )
+                self.hook_provider.on_turn_complete(
                     self.session_id,
                     submission_id,
                     {
@@ -193,8 +201,7 @@ class AgentTurn:
             if self.event_handler:
                 await self.event_handler.emit_error(submission_id, f"回合执行失败: {str(e)}")
             if self.hook_provider:
-                self.hook_provider.emit_named(
-                    "error",
+                self.hook_provider.on_error(
                     self.session_id,
                     submission_id,
                     {"message": str(e), "stage": "execute_turn"},
@@ -248,8 +255,7 @@ class AgentTurn:
                         submission_id, tool_call.name, tool_call.call_id, tool_call.args
                     )
                 if self.hook_provider:
-                    self.hook_provider.emit_named(
-                        "tool.start",
+                    self.hook_provider.on_tool_start(
                         self.session_id,
                         submission_id,
                         {
@@ -282,8 +288,7 @@ class AgentTurn:
                         response.error if not response.success else None
                     )
                 if self.hook_provider:
-                    self.hook_provider.emit_named(
-                        "tool.complete",
+                    self.hook_provider.on_tool_complete(
                         self.session_id,
                         submission_id,
                         {
@@ -313,8 +318,7 @@ class AgentTurn:
                         False, None, str(e)
                     )
                 if self.hook_provider:
-                    self.hook_provider.emit_named(
-                        "tool.complete",
+                    self.hook_provider.on_tool_complete(
                         self.session_id,
                         submission_id,
                         {

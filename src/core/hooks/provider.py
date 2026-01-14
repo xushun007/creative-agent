@@ -1,88 +1,79 @@
-"""Hook provider and multi-processor dispatcher."""
+"""Hook provider for lifecycle hooks."""
 
 from __future__ import annotations
 
-import threading
 from typing import Iterable, Optional
 
 from utils.logger import logger
 
-from .interfaces import HookEvent, HookProcessor
-from .processors import LoggerHookProcessor
-
-
-class SynchronousMultiHookProcessor(HookProcessor):
-    """Forwards hook events to registered processors."""
-
-    def __init__(self) -> None:
-        self._processors: tuple[HookProcessor, ...] = ()
-        self._lock = threading.Lock()
-
-    def add_processor(self, processor: HookProcessor) -> None:
-        with self._lock:
-            self._processors += (processor,)
-
-    def set_processors(self, processors: Iterable[HookProcessor]) -> None:
-        with self._lock:
-            self._processors = tuple(processors)
-
-    def on_event(self, event: HookEvent) -> None:
-        for processor in self._processors:
-            try:
-                processor.on_event(event)
-            except Exception as exc:
-                logger.error(f"Hook processor {processor} failed on_event: {exc}")
-
-    def shutdown(self) -> None:
-        for processor in self._processors:
-            try:
-                processor.shutdown()
-            except Exception as exc:
-                logger.error(f"Hook processor {processor} failed shutdown: {exc}")
-
-    def force_flush(self) -> None:
-        for processor in self._processors:
-            try:
-                processor.force_flush()
-            except Exception as exc:
-                logger.error(f"Hook processor {processor} failed force_flush: {exc}")
+from .context import HookContext
+from .lifecycle import HooksBase
+from .processors import LoggerHooks
 
 
 class HookProvider:
-    """Manages hook processors and emits events."""
+    """Manages lifecycle hooks and dispatches events."""
 
     def __init__(self, disabled: bool = False, with_default_processors: bool = True) -> None:
         self._disabled = disabled
-        self._multi_processor = SynchronousMultiHookProcessor()
+        self._hooks: tuple[HooksBase, ...] = ()
         if with_default_processors:
-            self._multi_processor.add_processor(LoggerHookProcessor())
+            self.register_hook(LoggerHooks())
 
     def set_disabled(self, disabled: bool) -> None:
         self._disabled = disabled
 
-    def register_processor(self, processor: HookProcessor) -> None:
-        self._multi_processor.add_processor(processor)
+    def register_hook(self, hook: HooksBase) -> None:
+        self._hooks += (hook,)
 
-    def set_processors(self, processors: Iterable[HookProcessor]) -> None:
-        self._multi_processor.set_processors(processors)
+    def set_hooks(self, hooks: Iterable[HooksBase]) -> None:
+        self._hooks = tuple(hooks)
 
-    def emit(self, event: HookEvent) -> None:
+    def on_session_start(self, session_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_session_start", session_id, None, payload or {})
+
+    def on_session_stop(self, session_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_session_stop", session_id, None, payload or {})
+
+    def on_task_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_task_start", session_id, submission_id, payload or {})
+
+    def on_task_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_task_complete", session_id, submission_id, payload or {})
+
+    def on_turn_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_turn_start", session_id, submission_id, payload or {})
+
+    def on_turn_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_turn_complete", session_id, submission_id, payload or {})
+
+    def on_llm_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_llm_start", session_id, submission_id, payload or {})
+
+    def on_llm_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_llm_complete", session_id, submission_id, payload or {})
+
+    def on_tool_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_tool_start", session_id, submission_id, payload or {})
+
+    def on_tool_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_tool_complete", session_id, submission_id, payload or {})
+
+    def on_error(self, session_id: str, submission_id: Optional[str], payload: Optional[dict] = None) -> None:
+        self._dispatch("on_error", session_id, submission_id, payload or {})
+
+    def _dispatch(self, method: str, session_id: str, submission_id: Optional[str], payload: dict) -> None:
         if self._disabled:
             return
-        self._multi_processor.on_event(event)
-
-    def emit_named(
-        self,
-        name: str,
-        session_id: str,
-        submission_id: Optional[str],
-        payload: Optional[dict],
-    ) -> None:
-        event = HookEvent.create(name, session_id, submission_id, payload)
-        self.emit(event)
-
-    def shutdown(self) -> None:
-        self._multi_processor.shutdown()
-
-    def force_flush(self) -> None:
-        self._multi_processor.force_flush()
+        event_name = method.replace("on_", "", 1)
+        context = HookContext.create(
+            name=event_name.replace("_", "."),
+            session_id=session_id,
+            submission_id=submission_id,
+            payload=payload,
+        )
+        for hook in self._hooks:
+            try:
+                getattr(hook, method)(context)
+            except Exception as exc:
+                logger.error(f"Hook handler {hook.__class__.__name__}.{method} failed: {exc}")

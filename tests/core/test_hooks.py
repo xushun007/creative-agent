@@ -2,51 +2,70 @@
 """Hook system unit tests."""
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 import os
 import tempfile
 from pathlib import Path
+import json
 
 # Keep consistent with existing tests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 from core.agent_turn import AgentTurn  # noqa: E402
 from core.config import Config  # noqa: E402
-from core.hooks import HookEvent, HookProcessor, HookProvider, LoggerHookProcessor, set_hook_provider  # noqa: E402
+from core.hooks import HookContext, HooksBase, HookProvider, LoggerHooks, set_hook_provider  # noqa: E402
 from core.model_client import ChatResponse  # noqa: E402
 from core.protocol import TokenUsage  # noqa: E402
 from core.session import Session  # noqa: E402
 from tools.base_tool import ToolResult  # noqa: E402
 
 
-class CollectorProcessor(HookProcessor):
+class CollectorHooks(HooksBase):
     """Collects hook events for assertions."""
 
     def __init__(self):
         self.events = []
 
-    def on_event(self, event: HookEvent) -> None:
-        self.events.append(event)
+    def on_session_start(self, context: HookContext) -> None:
+        self.events.append(context)
 
-    def shutdown(self) -> None:
-        pass
+    def on_session_stop(self, context: HookContext) -> None:
+        self.events.append(context)
 
-    def force_flush(self) -> None:
-        pass
+    def on_task_start(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_task_complete(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_turn_start(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_turn_complete(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_llm_start(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_llm_complete(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_tool_start(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_tool_complete(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_error(self, context: HookContext) -> None:
+        self.events.append(context)
 
 
-class FailingProcessor(HookProcessor):
-    """Processor that raises to test isolation."""
+class FailingHook(HooksBase):
+    """Hook that raises to test isolation."""
 
-    def on_event(self, event: HookEvent) -> None:
+    def on_session_start(self, context: HookContext) -> None:
         raise RuntimeError("boom")
-
-    def shutdown(self) -> None:
-        pass
-
-    def force_flush(self) -> None:
-        pass
 
 
 class HookProviderTestCase(unittest.TestCase):
@@ -54,10 +73,10 @@ class HookProviderTestCase(unittest.TestCase):
 
     def test_provider_dispatches_events(self):
         provider = HookProvider(with_default_processors=False)
-        collector = CollectorProcessor()
-        provider.register_processor(collector)
+        collector = CollectorHooks()
+        provider.register_hook(collector)
 
-        provider.emit_named("session.start", "s1", None, {"foo": "bar"})
+        provider.on_session_start("s1", {"foo": "bar"})
 
         self.assertEqual(len(collector.events), 1)
         self.assertEqual(collector.events[0].name, "session.start")
@@ -66,28 +85,52 @@ class HookProviderTestCase(unittest.TestCase):
     def test_default_logger_processor_registered(self):
         provider = HookProvider()
 
-        processors = provider._multi_processor._processors
-        self.assertTrue(any(isinstance(p, LoggerHookProcessor) for p in processors))
+        hooks = provider._hooks
+        self.assertTrue(any(isinstance(p, LoggerHooks) for p in hooks))
 
     def test_provider_disabled_skips_events(self):
         provider = HookProvider(disabled=True, with_default_processors=False)
-        collector = CollectorProcessor()
-        provider.register_processor(collector)
+        collector = CollectorHooks()
+        provider.register_hook(collector)
 
-        provider.emit_named("task.start", "s1", "sub1", {})
+        provider.on_task_start("s1", "sub1", {})
 
         self.assertEqual(len(collector.events), 0)
 
     def test_provider_isolates_processor_failures(self):
         provider = HookProvider(with_default_processors=False)
-        collector = CollectorProcessor()
-        provider.register_processor(FailingProcessor())
-        provider.register_processor(collector)
+        collector = CollectorHooks()
+        provider.register_hook(FailingHook())
+        provider.register_hook(collector)
 
-        provider.emit_named("turn.start", "s1", "sub1", {})
+        provider.on_session_start("s1", {})
 
         self.assertEqual(len(collector.events), 1)
-        self.assertEqual(collector.events[0].name, "turn.start")
+        self.assertEqual(collector.events[0].name, "session.start")
+
+    def test_provider_sets_context_fields(self):
+        provider = HookProvider(with_default_processors=False)
+        collector = CollectorHooks()
+        provider.register_hook(collector)
+
+        provider.on_task_start("s1", "sub1", {"x": 1})
+
+        self.assertEqual(len(collector.events), 1)
+        context = collector.events[0]
+        self.assertEqual(context.name, "task.start")
+        self.assertEqual(context.session_id, "s1")
+        self.assertEqual(context.submission_id, "sub1")
+        self.assertEqual(context.payload["x"], 1)
+        self.assertTrue(context.timestamp)
+
+    def test_error_hook_includes_name(self):
+        provider = HookProvider(with_default_processors=False)
+        collector = CollectorHooks()
+        provider.register_hook(collector)
+
+        provider.on_error("s1", "sub1", {"message": "boom"})
+
+        self.assertEqual(collector.events[0].name, "error")
 
 
 class HookIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
@@ -102,9 +145,9 @@ class HookIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         self.tool_registry = MagicMock()
         self.tool_registry.execute_tool = AsyncMock()
 
-        self.collector = CollectorProcessor()
+        self.collector = CollectorHooks()
         self.provider = HookProvider(with_default_processors=False)
-        self.provider.register_processor(self.collector)
+        self.provider.register_hook(self.collector)
 
     async def test_agent_turn_emits_turn_hooks(self):
         token_usage = TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2)
@@ -129,6 +172,8 @@ class HookIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         names = [event.name for event in self.collector.events]
         self.assertIn("turn.start", names)
         self.assertIn("turn.complete", names)
+        self.assertIn("llm.start", names)
+        self.assertIn("llm.complete", names)
 
     async def test_agent_turn_emits_tool_hooks(self):
         tool_call = {
@@ -179,6 +224,23 @@ class HookIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         names = [event.name for event in self.collector.events]
         self.assertIn("session.start", names)
         self.assertIn("session.stop", names)
+
+
+class LoggerHooksTestCase(unittest.TestCase):
+    """Tests for LoggerHooks JSON output."""
+
+    def test_logger_hooks_outputs_json(self):
+        provider = HookProvider(with_default_processors=True)
+
+        with patch("utils.logger.logger.info") as logger_info:
+            provider.on_session_start("s1", {"foo": "bar"})
+
+            logger_info.assert_called()
+            payload = logger_info.call_args.args[0]
+            data = json.loads(payload)
+            self.assertEqual(data["name"], "session.start")
+            self.assertEqual(data["session_id"], "s1")
+            self.assertEqual(data["payload"]["foo"], "bar")
 
 
 if __name__ == "__main__":
