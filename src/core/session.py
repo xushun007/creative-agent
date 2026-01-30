@@ -22,12 +22,67 @@ from utils.logger import logger
 class Session:
     """Codex会话"""
     
-    def __init__(self, config: Config, memory_manager: Optional[MemoryManager] = None):
+    def __init__(
+        self, 
+        config: Config, 
+        memory_manager: Optional[MemoryManager] = None,
+        parent_session_id: Optional[str] = None,
+        agent_name: Optional[str] = None,
+    ):
         self.config = config
         
-        # 集成工具注册系统
-        from tools.registry import get_global_registry
-        self.tool_registry = get_global_registry()
+        # 父子 Session 关系
+        self.parent_session_id = parent_session_id
+        self.is_subagent_session = parent_session_id is not None
+        
+        # Agent 系统
+        from core.agents import AgentRegistry, create_agent_tool_registry
+        
+        self.agent_registry = AgentRegistry.get_instance()
+        
+        # 确定使用的 agent
+        if agent_name:
+            self.agent = self.agent_registry.get(agent_name)
+            if not self.agent:
+                raise ValueError(f"Agent '{agent_name}' not found in registry")
+        else:
+            # 使用默认 agent
+            default_name = getattr(config, 'default_agent', 'build')
+            self.agent = self.agent_registry.get(default_name)
+            if not self.agent:
+                # 降级到 build
+                self.agent = self.agent_registry.get('build')
+        
+        logger.info(f"Session 使用 agent: {self.agent.name} (mode={self.agent.mode})")
+        
+        # 集成工具注册系统 - 基于 agent 创建过滤后的工具注册表
+        if self.is_subagent_session:
+            # 子 session：创建过滤的工具注册表（自动排除 task）
+            self.tool_registry = create_agent_tool_registry(self.agent)
+            logger.info(f"子 Session: 创建过滤工具注册表 (排除 task 工具)")
+        else:
+            # 主 session：使用全局工具注册表或基于 agent 过滤
+            if "*" in self.agent.allowed_tools:
+                from tools.registry import get_global_registry
+                self.tool_registry = get_global_registry()
+            else:
+                self.tool_registry = create_agent_tool_registry(self.agent)
+            logger.info(f"主 Session: 工具注册表已创建")
+        
+        # 应用 agent 的配置
+        if self.agent.system_prompt:
+            # 覆盖配置的系统提示
+            config.user_instructions = self.agent.system_prompt
+            logger.debug(f"应用 agent 系统提示: {self.agent.name}")
+        
+        if self.agent.model_override:
+            # 覆盖模型配置
+            config.model = self.agent.model_override
+            logger.debug(f"覆盖模型为: {self.agent.model_override}")
+        
+        # 应用 agent 的执行参数
+        config.max_turns = self.agent.max_turns
+        logger.debug(f"设置 max_turns: {self.agent.max_turns}")
         
         # 记忆管理器（可选）- 支持传入已恢复的 memory_manager
         self.memory_manager: Optional[MemoryManager] = memory_manager
@@ -39,6 +94,13 @@ class Session:
             # 创建新会话
             self.session_id = str(uuid.uuid4())
             if getattr(config, 'enable_memory', True):
+                # 记录父子关系
+                memory_metadata = {}
+                if self.parent_session_id:
+                    memory_metadata['parent_session_id'] = self.parent_session_id
+                    memory_metadata['agent_name'] = self.agent.name
+                    memory_metadata['agent_mode'] = self.agent.mode
+                
                 self.memory_manager = MemoryManager(
                     session_dir=config.session_dir,
                     session_id=self.session_id,  # 由 Session 传入
@@ -91,15 +153,24 @@ class Session:
         """启动会话"""
         self.is_active = True
         
-        # 发送会话配置事件
+        # 发送会话配置事件（包含 agent 信息）
         await self.event_handler.emit(self.session_id, EventMsg("session_configured", {
             "session_id": self.session_id,
+            "parent_session_id": self.parent_session_id,
+            "agent_name": self.agent.name,
+            "agent_mode": self.agent.mode,
             "model": self.config.model,
-            "cwd": str(self.config.cwd)
+            "cwd": str(self.config.cwd),
+            "max_turns": self.config.max_turns,
         }))
         self.hook_provider.on_session_start(
             self.session_id,
-            {"model": self.config.model, "cwd": str(self.config.cwd)},
+            {
+                "model": self.config.model, 
+                "cwd": str(self.config.cwd),
+                "agent": self.agent.name,
+                "parent_session_id": self.parent_session_id,
+            },
         )
     
     async def stop(self):

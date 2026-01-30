@@ -43,3 +43,4 @@ doc/
 examples/
 
 uv.lock
+.creative-agent/

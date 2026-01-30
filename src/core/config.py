@@ -77,6 +77,13 @@ class Config(BaseSettings):
     # 日志
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
     
+    # Agent 系统
+    default_agent: str = Field(default="build", description="默认使用的 agent")
+    agent_config_path: Path = Field(
+        default_factory=lambda: Path.cwd() / ".creative-agent" / "config.json",
+        description="Agent 配置文件路径"
+    )
+    
     @classmethod
     def settings_customise_sources(
         cls,
