@@ -193,6 +193,14 @@ class CodexCLI:
                 error = msg.data.get("error", "未知错误")
                 console.print(f"[red]❌ 工具 {tool_name} 执行失败: {error}[/red]")
         
+        elif msg.type == "task_progress":
+            summary = msg.data.get("summary", [])
+            if summary:
+                last = summary[-1]
+                tool = last.get("tool", "unknown")
+                status = last.get("state", {}).get("status", "unknown")
+                console.print(f"[dim]子任务进度: {tool}:{status} (steps={len(summary)})[/dim]")
+        
         elif msg.type == "approval_complete":
             decision = msg.data.get("decision", "")
             result = msg.data.get("result", "")

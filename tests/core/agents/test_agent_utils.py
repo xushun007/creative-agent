@@ -13,8 +13,6 @@ from core.agents import (
     AgentRegistry,
     create_agent_tool_registry,
     get_agent_tool_names,
-    validate_agent_config,
-    merge_agent_configs,
 )
 
 
@@ -123,72 +121,5 @@ class TestAgentUtils(unittest.TestCase):
         self.assertIn("grep", tool_names)
         self.assertIn("task", tool_names)
     
-    def test_validate_agent_config_valid(self):
-        """测试验证有效配置"""
-        config = {
-            "description": "测试",
-            "mode": "subagent",
-            "system_prompt": "提示",
-            "allowed_tools": ["read"],
-        }
-        
-        self.assertTrue(validate_agent_config(config))
-    
-    def test_validate_agent_config_missing_field(self):
-        """测试验证缺少必需字段的配置"""
-        config = {
-            "description": "测试",
-            "mode": "subagent",
-            # 缺少 system_prompt 和 allowed_tools
-        }
-        
-        self.assertFalse(validate_agent_config(config))
-    
-    def test_validate_agent_config_invalid_mode(self):
-        """测试验证无效的 mode"""
-        config = {
-            "description": "测试",
-            "mode": "invalid_mode",
-            "system_prompt": "提示",
-            "allowed_tools": ["read"],
-        }
-        
-        self.assertFalse(validate_agent_config(config))
-    
-    def test_validate_agent_config_empty_tools(self):
-        """测试验证空工具列表"""
-        config = {
-            "description": "测试",
-            "mode": "subagent",
-            "system_prompt": "提示",
-            "allowed_tools": [],  # 空列表
-        }
-        
-        self.assertFalse(validate_agent_config(config))
-    
-    def test_merge_agent_configs(self):
-        """测试合并配置"""
-        base = AgentInfo(
-            name="test",
-            description="原始描述",
-            mode="primary",
-            allowed_tools=["read"],
-            max_turns=10,
-        )
-        
-        override = {
-            "description": "新描述",
-            "max_turns": 20,
-        }
-        
-        merged = merge_agent_configs(base, override)
-        
-        self.assertEqual(merged.description, "新描述")
-        self.assertEqual(merged.max_turns, 20)
-        # 未覆盖的字段保持原值
-        self.assertEqual(merged.mode, "primary")
-        self.assertEqual(merged.allowed_tools, ["read"])
-
-
 if __name__ == '__main__':
     unittest.main()

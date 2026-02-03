@@ -8,9 +8,15 @@ import tempfile
 from pathlib import Path
 from datetime import datetime
 
-from src.core.config import Config
-from src.core.session import Session
-from src.core.memory import MemoryManager
+import sys
+import os
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
+
+from core.config import Config
+from core.session import Session
+from core.memory import MemoryManager
 
 
 @pytest.fixture
@@ -214,4 +220,3 @@ def test_session_stats_accuracy(test_sessions, temp_session_dir):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
-

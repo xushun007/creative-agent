@@ -1,8 +1,9 @@
-"""Agent 注册表 - 单例模式"""
+"""Agent 注册表 - 单例模式
+
+当前版本暂不支持从 .creative-agent/config.json 加载 agents 配置（保持硬编码，与 opencode 行为一致）。
+"""
 
 from typing import Dict, List, Optional, Literal
-from pathlib import Path
-import json
 
 from .info import AgentInfo
 from .prompts import (
@@ -195,83 +196,6 @@ class AgentRegistry:
         del self._agents[name]
         logger.info(f"移除 agent: {name}")
         return True
-    
-    def load_from_config(self, config_path: Path) -> int:
-        """从配置文件加载 agents
-        
-        Args:
-            config_path: 配置文件路径（JSON格式）
-            
-        Returns:
-            加载的 agent 数量
-        """
-        if not config_path.exists():
-            logger.debug(f"配置文件不存在: {config_path}")
-            return 0
-        
-        try:
-            with open(config_path) as f:
-                config_data = json.load(f)
-            
-            agents_config = config_data.get("agents", {})
-            loaded_count = 0
-            
-            for name, cfg in agents_config.items():
-                # 处理禁用
-                if cfg.get("disabled"):
-                    if self.exists(name):
-                        self.remove(name)
-                        logger.info(f"禁用 agent: {name}")
-                    continue
-                
-                # 获取现有 agent（用于覆盖）
-                existing = self.get(name)
-                
-                if existing:
-                    # 覆盖现有 agent 的部分字段
-                    agent = AgentInfo(
-                        name=name,
-                        description=cfg.get("description", existing.description),
-                        mode=cfg.get("mode", existing.mode),
-                        system_prompt=cfg.get("system_prompt", existing.system_prompt),
-                        allowed_tools=cfg.get("allowed_tools", existing.allowed_tools),
-                        max_turns=cfg.get("max_turns", existing.max_turns),
-                        model_override=cfg.get("model_override", existing.model_override),
-                        native=existing.native,  # 保持 native 状态
-                        hidden=cfg.get("hidden", existing.hidden),
-                        metadata=cfg.get("metadata", existing.metadata),
-                    )
-                else:
-                    # 新 agent（必须提供完整信息）
-                    if "mode" not in cfg:
-                        logger.warning(f"跳过不完整的 agent 配置: {name} (缺少 mode)")
-                        continue
-                    
-                    agent = AgentInfo(
-                        name=name,
-                        description=cfg.get("description", ""),
-                        mode=cfg.get("mode", "subagent"),
-                        system_prompt=cfg.get("system_prompt", ""),
-                        allowed_tools=cfg.get("allowed_tools", []),
-                        max_turns=cfg.get("max_turns", 50),
-                        model_override=cfg.get("model_override"),
-                        native=False,  # 自定义 agent 都是非内置
-                        hidden=cfg.get("hidden", False),
-                        metadata=cfg.get("metadata", {}),
-                    )
-                
-                self.register(agent)
-                loaded_count += 1
-            
-            logger.info(f"从配置文件加载了 {loaded_count} 个 agents")
-            return loaded_count
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"配置文件格式错误: {e}")
-            return 0
-        except Exception as e:
-            logger.error(f"加载配置文件失败: {e}")
-            return 0
     
     def get_agent_names(self) -> List[str]:
         """获取所有 agent 名称列表"""

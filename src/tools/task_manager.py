@@ -1,21 +1,9 @@
-"""Task 管理器 - 管理子代理配置和会话"""
+"""Task 管理器 - 仅管理子代理会话记录（不做配置化加载）"""
 
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
-
-
-@dataclass
-class SubagentConfig:
-    """子代理配置"""
-    name: str                           # 代理名称，如 "plan", "general", "explore"
-    description: str                    # 代理描述
-    system_prompt: str                  # 子代理专用的系统提示词
-    allowed_tools: List[str]            # 允许使用的工具列表
-    max_turns: int = 10                 # 最大推理轮次
-    temperature: float = 0.7            # LLM 温度参数
-    model_override: Optional[str] = None  # 可选的模型覆盖
 
 
 @dataclass
@@ -49,40 +37,8 @@ class TaskManager:
         # 避免重复初始化
         if self._initialized:
             return
-        
-        self._subagents: Dict[str, SubagentConfig] = {}
         self._sessions: Dict[str, SubagentSession] = {}
         self._initialized = True
-    
-    def register_subagent(self, config: SubagentConfig) -> None:
-        """注册子代理配置
-        
-        Args:
-            config: 子代理配置
-        """
-        if config.name in self._subagents:
-            # 避免重复注册（允许覆盖）
-            pass
-        self._subagents[config.name] = config
-    
-    def get_subagent(self, name: str) -> Optional[SubagentConfig]:
-        """获取子代理配置
-        
-        Args:
-            name: 子代理名称
-            
-        Returns:
-            子代理配置，如果不存在返回 None
-        """
-        return self._subagents.get(name)
-    
-    def list_subagents(self) -> List[SubagentConfig]:
-        """列出所有注册的子代理
-        
-        Returns:
-            子代理配置列表
-        """
-        return list(self._subagents.values())
     
     def create_session(
         self,

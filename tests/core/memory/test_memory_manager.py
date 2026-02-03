@@ -4,12 +4,15 @@ import pytest
 import tempfile
 from pathlib import Path
 from datetime import datetime
+import uuid
 
-from src.core.memory import (
-    MemoryManager,
-    MemoryMessage,
-    TokenCounter
-)
+import sys
+import os
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../src"))
+
+from core.memory import MemoryManager, MemoryMessage
 
 
 @pytest.fixture
@@ -24,6 +27,7 @@ def memory_manager(temp_session_dir):
     """创建记忆管理器"""
     return MemoryManager(
         session_dir=temp_session_dir,
+        session_id=str(uuid.uuid4()),
         cwd=Path.cwd(),
         model="test-model",
         user_instructions="测试指令",
@@ -35,6 +39,7 @@ def test_create_new_session(temp_session_dir):
     """测试创建新会话"""
     manager = MemoryManager(
         session_dir=temp_session_dir,
+        session_id=str(uuid.uuid4()),
         cwd=Path.cwd(),
         model="test-model",
         auto_load_project_docs=False
@@ -141,6 +146,7 @@ def test_resume_session(temp_session_dir):
     # 1. 创建会话
     manager1 = MemoryManager(
         session_dir=temp_session_dir,
+        session_id=str(uuid.uuid4()),
         cwd=Path.cwd(),
         model="test-model",
         user_instructions="原始指令",
@@ -173,6 +179,7 @@ def test_list_sessions(temp_session_dir):
     for i in range(3):
         manager = MemoryManager(
             session_dir=temp_session_dir,
+            session_id=str(uuid.uuid4()),
             cwd=Path.cwd(),
             model=f"model-{i}",
             auto_load_project_docs=False
@@ -202,6 +209,7 @@ def test_persistence(temp_session_dir):
     """测试持久化"""
     manager = MemoryManager(
         session_dir=temp_session_dir,
+        session_id=str(uuid.uuid4()),
         cwd=Path.cwd(),
         model="test-model",
         auto_load_project_docs=False
@@ -218,4 +226,3 @@ def test_persistence(temp_session_dir):
     assert "持久化测试" in content
     assert "收到" in content
     assert "session_meta" in content
-

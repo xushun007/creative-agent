@@ -14,23 +14,29 @@ class TestSessionCompaction:
     """测试 Session 中的压缩功能集成"""
     
     @pytest.fixture
-    def config_with_compaction(self):
+    def config_with_compaction(self, tmp_path):
         """创建测试配置（启用压缩）"""
         return Config(
             model="gpt-4",
             api_key="test-key",
             cwd=Path.cwd(),
-            enable_compaction=True  # 启用压缩
+            enable_compaction=True,  # 启用压缩
+            enable_memory=False,
+            auto_load_project_docs=False,
+            session_dir=tmp_path / "sessions",
         )
     
     @pytest.fixture
-    def config_without_compaction(self):
+    def config_without_compaction(self, tmp_path):
         """创建测试配置（禁用压缩）"""
         return Config(
             model="gpt-4",
             api_key="test-key",
             cwd=Path.cwd(),
-            enable_compaction=False  # 禁用压缩
+            enable_compaction=False,  # 禁用压缩
+            enable_memory=False,
+            auto_load_project_docs=False,
+            session_dir=tmp_path / "sessions",
         )
     
     def test_session_with_compaction_enabled(self, config_with_compaction):
@@ -125,13 +131,16 @@ class TestCompactionIntegration:
     """测试压缩功能的完整集成"""
     
     @pytest.fixture
-    def config(self):
+    def config(self, tmp_path):
         return Config(
             model="gpt-4",
             api_key="test-key",
             cwd=Path.cwd(),
             enable_compaction=True,     # 启用压缩
-            max_context_tokens=1000     # 设置较小的上下文以便测试
+            max_context_tokens=1000,    # 设置较小的上下文以便测试
+            enable_memory=False,
+            auto_load_project_docs=False,
+            session_dir=tmp_path / "sessions",
         )
     
     @pytest.mark.asyncio
@@ -160,7 +169,9 @@ class TestCompactionIntegration:
         """测试配置默认值"""
         config = Config(
             model="gpt-4",
-            api_key="test-key"
+            api_key="test-key",
+            enable_compaction=False,
+            max_context_tokens=128000
         )
         
         # 默认应该禁用压缩

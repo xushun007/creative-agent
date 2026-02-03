@@ -107,12 +107,14 @@ class AgentTurn:
                  tool_registry: ToolRegistry,
                  event_handler: Optional[EventHandler] = None,
                  session_id: str = "default",
-                 hook_provider: Optional[HookProvider] = None):
+                 hook_provider: Optional[HookProvider] = None,
+                 abort_event: Optional[asyncio.Event] = None):
         self.model_client = model_client
         self.tool_registry = tool_registry
         self.event_handler = event_handler  # 可以为None，不强制要求
         self.session_id = session_id
         self.hook_provider = hook_provider
+        self.abort_event = abort_event
         
         # 批准机制相关
         self.approval_pending: Dict[str, Dict[str, Any]] = {}
@@ -340,7 +342,14 @@ class AgentTurn:
                 session_id=self.session_id,
                 message_id=submission_id,
                 agent="AgentTurn",
-                call_id=tool_call.call_id
+                call_id=tool_call.call_id,
+                extra={
+                    # 让工具（尤其是 task）能继承主 Session 的关键配置（cwd/model/max_turns 等）
+                    "config": self.model_client.config,
+                    # 让工具可发进度事件/联动取消
+                    "event_handler": self.event_handler,
+                    "abort_event": self.abort_event,
+                },
             )
             
             # 使用工具注册系统执行工具

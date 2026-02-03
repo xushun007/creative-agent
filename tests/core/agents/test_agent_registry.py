@@ -4,9 +4,6 @@
 import unittest
 import sys
 import os
-from pathlib import Path
-import tempfile
-import json
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
@@ -242,169 +239,6 @@ class TestAgentRegistry(unittest.TestCase):
         all_agents = registry.list_agents(include_hidden=True)
         names = [a.name for a in all_agents]
         self.assertIn("hidden", names)
-    
-    def test_load_from_config_custom_agent(self):
-        """测试从配置文件加载自定义 agent"""
-        registry = AgentRegistry()
-        
-        # 创建临时配置文件
-        config_data = {
-            "agents": {
-                "debug": {
-                    "description": "调试专家",
-                    "mode": "subagent",
-                    "system_prompt": "你是调试专家",
-                    "allowed_tools": ["read", "grep", "shell"],
-                    "max_turns": 12,
-                }
-            }
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            config_path = Path(f.name)
-        
-        try:
-            # 加载配置
-            loaded = registry.load_from_config(config_path)
-            
-            self.assertEqual(loaded, 1)
-            self.assertEqual(len(registry), 5)  # 4 内置 + 1 自定义
-            
-            # 验证自定义 agent
-            debug = registry.get("debug")
-            self.assertIsNotNone(debug)
-            self.assertEqual(debug.description, "调试专家")
-            self.assertEqual(debug.mode, "subagent")
-            self.assertEqual(debug.max_turns, 12)
-            self.assertFalse(debug.native)
-        finally:
-            config_path.unlink()
-    
-    def test_load_from_config_override_builtin(self):
-        """测试从配置文件覆盖内置 agent"""
-        registry = AgentRegistry()
-        
-        # 创建临时配置文件（覆盖 plan）
-        config_data = {
-            "agents": {
-                "plan": {
-                    "max_turns": 40,  # 覆盖默认的 30
-                    "description": "自定义描述",
-                }
-            }
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            config_path = Path(f.name)
-        
-        try:
-            loaded = registry.load_from_config(config_path)
-            
-            self.assertEqual(loaded, 1)
-            
-            # 验证覆盖
-            plan = registry.get("plan")
-            self.assertEqual(plan.max_turns, 40)
-            self.assertEqual(plan.description, "自定义描述")
-            # 其他字段保持不变
-            self.assertTrue(plan.native)
-            self.assertEqual(plan.mode, "primary")
-        finally:
-            config_path.unlink()
-    
-    def test_load_from_config_disable_agent(self):
-        """测试从配置文件禁用 agent"""
-        registry = AgentRegistry()
-        
-        # 注册自定义 agent
-        custom = AgentInfo(
-            name="custom",
-            description="自定义",
-            mode="subagent",
-            allowed_tools=["read"],
-            native=False,
-        )
-        registry.register(custom)
-        
-        # 创建配置禁用它
-        config_data = {
-            "agents": {
-                "custom": {
-                    "disabled": True
-                }
-            }
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            config_path = Path(f.name)
-        
-        try:
-            loaded = registry.load_from_config(config_path)
-            
-            # 验证已禁用
-            self.assertNotIn("custom", registry)
-        finally:
-            config_path.unlink()
-    
-    def test_load_from_nonexistent_config(self):
-        """测试加载不存在的配置文件"""
-        registry = AgentRegistry()
-        
-        nonexistent = Path("/tmp/nonexistent_config_12345.json")
-        loaded = registry.load_from_config(nonexistent)
-        
-        self.assertEqual(loaded, 0)
-        # 内置 agents 应该仍然存在
-        self.assertEqual(len(registry), 4)
-    
-    def test_load_from_invalid_json(self):
-        """测试加载无效的 JSON 文件"""
-        registry = AgentRegistry()
-        
-        # 创建无效 JSON 文件
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            f.write("{ invalid json }")
-            config_path = Path(f.name)
-        
-        try:
-            loaded = registry.load_from_config(config_path)
-            
-            self.assertEqual(loaded, 0)
-            # 内置 agents 应该仍然存在
-            self.assertEqual(len(registry), 4)
-        finally:
-            config_path.unlink()
-    
-    def test_load_incomplete_agent_config(self):
-        """测试加载不完整的 agent 配置"""
-        registry = AgentRegistry()
-        
-        # 创建不完整配置（缺少 mode）
-        config_data = {
-            "agents": {
-                "incomplete": {
-                    "description": "不完整",
-                    # 缺少 mode
-                    "allowed_tools": ["read"]
-                }
-            }
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            config_path = Path(f.name)
-        
-        try:
-            loaded = registry.load_from_config(config_path)
-            
-            # 应该跳过不完整的配置
-            self.assertEqual(loaded, 0)
-            self.assertNotIn("incomplete", registry)
-        finally:
-            config_path.unlink()
 
 
 class TestBuiltinAgents(unittest.TestCase):
@@ -447,7 +281,7 @@ class TestBuiltinAgents(unittest.TestCase):
         self.assertIn("read", general.allowed_tools)
         self.assertIn("write", general.allowed_tools)
         self.assertNotIn("task", general.allowed_tools)  # 不应包含 task
-        self.assertEqual(general.max_turns, 15)
+        self.assertEqual(general.max_turns, 30)
         self.assertTrue(general.native)
     
     def test_explore_agent(self):
@@ -459,7 +293,7 @@ class TestBuiltinAgents(unittest.TestCase):
         self.assertIn("grep", explore.allowed_tools)
         self.assertIn("glob", explore.allowed_tools)
         self.assertNotIn("write", explore.allowed_tools)
-        self.assertEqual(explore.max_turns, 10)
+        self.assertEqual(explore.max_turns, 30)
         self.assertTrue(explore.native)
     
     def test_build_can_use_task(self):

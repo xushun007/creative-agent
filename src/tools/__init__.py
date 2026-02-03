@@ -5,7 +5,7 @@ from .file_tools import ReadTool, WriteTool
 from .edit_tool import EditTool
 from .multi_edit_tool import MultiEditTool
 from .task_tool import TaskTool
-from .task_manager import TaskManager, SubagentConfig, SubagentSession
+from .task_manager import TaskManager, SubagentSession
 from .web_tools import WebFetchTool, WebSearchTool
 from .registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
 
@@ -29,7 +29,6 @@ __all__ = [
     'MultiEditTool',
     'TaskTool',
     'TaskManager',
-    'SubagentConfig',
     'SubagentSession',
     'WebFetchTool',
     'WebSearchTool',

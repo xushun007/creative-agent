@@ -56,6 +56,9 @@ class CodexEngine:
         if not self.session:
             raise RuntimeError("会话未启动")
         
+        # 先触发当前任务的中断事件（联动取消工具）
+        self.session.abort_current_task()
+
         op = Op.interrupt()
         submission_id = await self.session.submit_operation(op)
         return submission_id

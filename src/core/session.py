@@ -180,6 +180,11 @@ class Session:
         # 发送会话结束事件
         await self.event_handler.emit(self.session_id, EventMsg("shutdown_complete", {}))
         self.hook_provider.on_session_stop(self.session_id, {})
+
+    def abort_current_task(self):
+        """触发当前任务的中断事件（用于联动取消工具）"""
+        if hasattr(self, "_current_abort_event") and self._current_abort_event:
+            self._current_abort_event.set()
     
     async def cleanup(self):
         """清理会话资源
@@ -265,6 +270,9 @@ class Session:
             # 发送用户消息事件
             await self.event_handler.emit_user_message(submission.id, user_text)
         
+        # 每个提交的中断事件（用于联动取消）
+        self._current_abort_event = asyncio.Event()
+
         # 创建AgentTurn实例
         from .agent_turn import AgentTurn
         agent_turn = AgentTurn(
@@ -273,6 +281,7 @@ class Session:
             event_handler=self.event_handler,
             session_id=self.session_id,
             hook_provider=self.hook_provider,
+            abort_event=self._current_abort_event,
         )
         
         # ReAct 循环：持续对话直到任务完成
@@ -339,6 +348,10 @@ class Session:
     async def _handle_interrupt(self, submission: Submission):
         """处理中断"""
         self.current_task_id = None
+
+        # 触发当前提交的中断事件（供工具联动取消）
+        if hasattr(self, "_current_abort_event") and self._current_abort_event:
+            self._current_abort_event.set()
         
         await self.event_handler.emit(submission.id, EventMsg("turn_aborted", {"reason": "interrupted"}))
     

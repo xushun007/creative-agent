@@ -23,8 +23,6 @@ from .registry import AgentRegistry
 from .utils import (
     create_agent_tool_registry,
     get_agent_tool_names,
-    validate_agent_config,
-    merge_agent_configs,
 )
 from .prompts import (
     BUILD_AGENT_PROMPT,
@@ -44,8 +42,6 @@ __all__ = [
     # 工具函数
     "create_agent_tool_registry",
     "get_agent_tool_names",
-    "validate_agent_config",
-    "merge_agent_configs",
     
     # 系统提示
     "BUILD_AGENT_PROMPT",
