@@ -65,6 +65,8 @@ class Session:
             if "*" in self.agent.allowed_tools:
                 from tools.registry import get_global_registry
                 self.tool_registry = get_global_registry()
+                if not getattr(config, "enable_subagent", True):
+                    self.tool_registry.disable_tool("task")
             else:
                 self.tool_registry = create_agent_tool_registry(self.agent)
             logger.info(f"主 Session: 工具注册表已创建")

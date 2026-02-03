@@ -84,7 +84,8 @@ class CodexCLI:
                 f"模型: {self.config.model}\n"
                 f"工作目录: {self.config.cwd}\n"
                 f"沙箱策略: {self.config.sandbox_policy}\n"
-                f"记忆系统: {memory_status}",
+                f"记忆系统: {memory_status}\n"
+                f"子代理: {'启用' if getattr(self.config, 'enable_subagent', True) else '禁用'}",
                 title="🤖 Codex"
             ))
 

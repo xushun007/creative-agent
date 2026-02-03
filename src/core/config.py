@@ -52,6 +52,7 @@ class Config(BaseSettings):
     # 执行控制
     max_turns: int = Field(default=20, ge=1, le=100, description="最大对话轮次")
     disable_response_storage: bool = Field(default=False, description="禁用响应存储")
+    enable_subagent: bool = Field(default=True, description="启用子代理(task工具)")
     
     # 记忆系统
     enable_memory: bool = Field(default=True, description="启用记忆持久化")
