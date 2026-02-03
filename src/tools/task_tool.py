@@ -29,6 +29,9 @@ class TaskTool(BaseTool[Dict[str, Any]]):
         self.task_manager = TaskManager()
         self.agent_registry = AgentRegistry.get_instance()
         
+        # 跟踪活跃的子代理会话（用于中断）
+        self._active_subagents: Dict[str, Any] = {}  # {session_id: sub_session}
+        
         # 构建工具描述（使用 AgentRegistry 的子代理）
         subagents = self.agent_registry.list_agents(mode="subagent")
         subagents_desc = "\n".join([
@@ -144,7 +147,8 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                 task_prompt=task_prompt,
                 parent_context=context,
                 context_files=context_files,
-                sub_session_id=sub_session.id
+                sub_session_id=sub_session.id,
+                parent_session_id=context.session_id
             )
             
             # 4. 更新会话状态
@@ -214,7 +218,8 @@ class TaskTool(BaseTool[Dict[str, Any]]):
         task_prompt: str,
         parent_context: ToolContext,
         context_files: List[str],
-        sub_session_id: str
+        sub_session_id: str,
+        parent_session_id: str
     ) -> str:
         """执行子代理（创建独立 Session）
         
@@ -224,6 +229,7 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             parent_context: 父上下文
             context_files: 上下文文件列表
             sub_session_id: 子会话ID
+            parent_session_id: 父会话ID（用于注册中断处理）
             
         Returns:
             子代理返回的结果
@@ -239,7 +245,8 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             agent,
             full_prompt,
             parent_context,
-            sub_session_id
+            sub_session_id,
+            parent_session_id
         )
         return result
     
@@ -248,7 +255,8 @@ class TaskTool(BaseTool[Dict[str, Any]]):
         agent: 'AgentInfo',
         task_prompt: str,
         parent_context: ToolContext,
-        sub_session_id: str
+        sub_session_id: str,
+        parent_session_id: str
     ) -> str:
         """执行真实的子代理 Session（使用 AgentRegistry）
         
@@ -257,6 +265,7 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             task_prompt: 任务提示
             parent_context: 父上下文
             sub_session_id: 子会话ID
+            parent_session_id: 父会话ID
             
         Returns:
             子代理返回的结果
@@ -299,23 +308,35 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             agent_name=agent.name  # ← 传入 agent 名称
         )
         
-        # 4. 启动 Session
-        await sub_session.start()
-        logger.debug(f"子代理 Session 已启动: {sub_session.session_id}, parent={sub_session.parent_session_id}")
+        # 注册到活跃子代理列表（用于中断）
+        self._active_subagents[sub_session.session_id] = sub_session
         
-        # 5. 提交任务
-        task_op = Op.user_input(text=task_prompt, cwd=sub_config.cwd)
-        await sub_session.submit_operation(task_op)
-        logger.debug(f"任务已提交到子代理")
-        
-        # 6. 等待任务完成（监听事件）
-        result = await self._wait_for_subagent_completion(sub_session)
-        
-        # 7. 停止 Session
-        await sub_session.stop()
-        logger.info(f"子代理 Session 已完成: {agent.name}")
-        
-        return result
+        try:
+            # 4. 启动 Session
+            await sub_session.start()
+            logger.debug(f"子代理 Session 已启动: {sub_session.session_id}, parent={sub_session.parent_session_id}")
+            
+            # 5. 提交任务
+            task_op = Op.user_input(text=task_prompt, cwd=sub_config.cwd)
+            await sub_session.submit_operation(task_op)
+            logger.debug(f"任务已提交到子代理")
+            
+            # 6. 等待任务完成（监听事件）
+            result = await self._wait_for_subagent_completion(sub_session)
+            
+            return result
+            
+        finally:
+            # 7. 停止并清理 Session（确保资源释放）
+            try:
+                await sub_session.stop()
+                await sub_session.cleanup()
+                logger.info(f"子代理 Session 已清理: {agent.name}")
+            except Exception as e:
+                logger.error(f"清理子代理 Session 失败: {e}")
+            finally:
+                # 从活跃列表中移除
+                self._active_subagents.pop(sub_session.session_id, None)
     
     async def _wait_for_subagent_completion(self, sub_session) -> str:
         """等待子代理任务完成
@@ -382,4 +403,64 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                     break
         
         return result_text or "子代理完成任务，但未返回结果。"
+    
+    async def cancel_subagent(self, session_id: str) -> bool:
+        """取消正在运行的子代理
+        
+        Args:
+            session_id: 子代理会话ID
+            
+        Returns:
+            是否成功取消
+        """
+        if session_id not in self._active_subagents:
+            logger.warning(f"尝试取消不存在的子代理: {session_id}")
+            return False
+        
+        sub_session = self._active_subagents[session_id]
+        
+        try:
+            logger.info(f"正在取消子代理: {session_id}")
+            
+            # 停止会话
+            await sub_session.stop()
+            
+            # 清理资源
+            await sub_session.cleanup()
+            
+            # 更新任务管理器中的状态
+            self.task_manager.update_session_status(
+                session_id,
+                status="cancelled",
+                error="用户取消任务"
+            )
+            
+            logger.info(f"子代理已取消: {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"取消子代理失败: {e}")
+            return False
+        finally:
+            # 从活跃列表中移除
+            self._active_subagents.pop(session_id, None)
+    
+    def get_active_subagents(self) -> List[str]:
+        """获取所有活跃的子代理会话ID列表
+        
+        Returns:
+            活跃的会话ID列表
+        """
+        return list(self._active_subagents.keys())
+    
+    def is_subagent_active(self, session_id: str) -> bool:
+        """检查子代理是否活跃
+        
+        Args:
+            session_id: 子代理会话ID
+            
+        Returns:
+            是否活跃
+        """
+        return session_id in self._active_subagents
     

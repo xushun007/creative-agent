@@ -25,7 +25,7 @@ class SubagentSession:
     parent_session_id: str              # 父会话ID
     subagent_type: str                  # 子代理类型
     task_description: str               # 任务描述
-    status: str                         # running, completed, failed, timeout
+    status: str                         # running, completed, failed, timeout, cancelled
     created_at: datetime
     completed_at: Optional[datetime] = None
     result: Optional[str] = None        # 子代理返回的结果
@@ -141,7 +141,7 @@ class TaskManager:
         session = self._sessions.get(session_id)
         if session:
             session.status = status
-            if status in ("completed", "failed", "timeout"):
+            if status in ("completed", "failed", "timeout", "cancelled"):
                 session.completed_at = datetime.now()
             if result is not None:
                 session.result = result

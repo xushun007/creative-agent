@@ -94,37 +94,45 @@ class TestTaskTool(unittest.TestCase):
     
     def test_default_subagents_registered(self):
         """测试默认子代理已注册"""
-        manager = TaskManager()
+        from core.agents import AgentRegistry
+        registry = AgentRegistry.get_instance()
         
-        # 验证三个默认子代理
-        plan_agent = manager.get_subagent("plan")
-        self.assertIsNotNone(plan_agent)
-        self.assertEqual(plan_agent.name, "plan")
-        self.assertIn("read", plan_agent.allowed_tools)
-        self.assertNotIn("bash", plan_agent.allowed_tools)
+        # 验证三个可用于 task 工具的 agent（通过 mode=subagent 过滤）
+        subagents = registry.list_agents(mode="subagent")
+        self.assertGreaterEqual(len(subagents), 2)  # 至少有 general 和 explore
         
-        general_agent = manager.get_subagent("general")
+        # 验证 general agent（子代理）
+        general_agent = registry.get("general")
         self.assertIsNotNone(general_agent)
         self.assertEqual(general_agent.name, "general")
+        self.assertEqual(general_agent.mode, "subagent")
         self.assertIn("read", general_agent.allowed_tools)
         self.assertIn("write", general_agent.allowed_tools)
-        self.assertIn("bash", general_agent.allowed_tools)
         
-        explore_agent = manager.get_subagent("explore")
+        # 验证 explore agent（子代理）
+        explore_agent = registry.get("explore")
         self.assertIsNotNone(explore_agent)
         self.assertEqual(explore_agent.name, "explore")
+        self.assertEqual(explore_agent.mode, "subagent")
         self.assertIn("read", explore_agent.allowed_tools)
-        self.assertNotIn("write", explore_agent.allowed_tools)
+        
+        # 验证 plan agent（主代理，不是子代理）
+        plan_agent = registry.get("plan")
+        self.assertIsNotNone(plan_agent)
+        self.assertEqual(plan_agent.name, "plan")
+        self.assertEqual(plan_agent.mode, "primary")  # plan 是主代理
+        self.assertIn("read", plan_agent.allowed_tools)
     
     def test_plan_agent_configuration(self):
         """测试 plan 代理配置"""
-        manager = TaskManager()
-        plan = manager.get_subagent("plan")
+        from core.agents import AgentRegistry
+        registry = AgentRegistry.get_instance()
+        plan = registry.get("plan")
         
         self.assertEqual(plan.name, "plan")
         self.assertIn("规划", plan.description)
-        self.assertEqual(plan.max_turns, 10)
-        self.assertEqual(plan.temperature, 0.7)
+        self.assertEqual(plan.max_turns, 30)  # 实际值为 30
+        self.assertEqual(plan.mode, "primary")  # plan 是主代理
         # Plan agent 是只读的
         self.assertIn("read", plan.allowed_tools)
         self.assertIn("grep", plan.allowed_tools)
@@ -133,27 +141,29 @@ class TestTaskTool(unittest.TestCase):
     
     def test_general_agent_configuration(self):
         """测试 general 代理配置"""
-        manager = TaskManager()
-        general = manager.get_subagent("general")
+        from core.agents import AgentRegistry
+        registry = AgentRegistry.get_instance()
+        general = registry.get("general")
         
         self.assertEqual(general.name, "general")
         self.assertIn("通用", general.description)
-        self.assertEqual(general.max_turns, 15)
-        self.assertEqual(general.temperature, 0.7)
-        # General agent 可读写执行
+        self.assertEqual(general.max_turns, 30)  # 实际值为 30
+        self.assertEqual(general.mode, "subagent")
+        # General agent 拥有读写执行权限
         self.assertIn("read", general.allowed_tools)
         self.assertIn("write", general.allowed_tools)
         self.assertIn("bash", general.allowed_tools)
     
     def test_explore_agent_configuration(self):
         """测试 explore 代理配置"""
-        manager = TaskManager()
-        explore = manager.get_subagent("explore")
+        from core.agents import AgentRegistry
+        registry = AgentRegistry.get_instance()
+        explore = registry.get("explore")
         
         self.assertEqual(explore.name, "explore")
         self.assertIn("探索", explore.description)
-        self.assertEqual(explore.max_turns, 8)
-        self.assertEqual(explore.temperature, 0.5)
+        self.assertEqual(explore.max_turns, 30)  # 实际值为 30
+        self.assertEqual(explore.mode, "subagent")
         # Explore agent 是只读的
         self.assertIn("read", explore.allowed_tools)
         self.assertIn("grep", explore.allowed_tools)

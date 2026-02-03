@@ -181,6 +181,32 @@ class Session:
         await self.event_handler.emit(self.session_id, EventMsg("shutdown_complete", {}))
         self.hook_provider.on_session_stop(self.session_id, {})
     
+    async def cleanup(self):
+        """清理会话资源
+        
+        释放会话占用的所有资源，包括：
+        - 关闭模型客户端连接
+        - 刷新记忆系统（如果启用）
+        """
+        logger.info(f"清理 Session 资源: {self.session_id}")
+        
+        # 1. 关闭模型客户端连接
+        if self.model_client and hasattr(self.model_client, 'close'):
+            try:
+                await self.model_client.close()
+            except Exception as e:
+                logger.warning(f"关闭模型客户端失败: {e}")
+        
+        # 2. 刷新记忆管理器（仅主 Session）
+        if self.memory_manager and not self.is_subagent_session:
+            try:
+                await self.memory_manager.flush()
+                logger.debug("记忆系统已刷新")
+            except Exception as e:
+                logger.warning(f"刷新记忆系统失败: {e}")
+        
+        logger.info(f"Session 资源清理完成: {self.session_id}")
+    
     async def submit_operation(self, op: Op) -> str:
         """提交操作"""
         submission = Submission.create(op)
