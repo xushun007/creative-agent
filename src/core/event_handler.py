@@ -52,14 +52,16 @@ class EventHandler:
         }))
     
     async def emit_tool_end(self, submission_id: str, tool_name: str, call_id: str, 
-                           success: bool, result: str = None, error: str = None):
+                           success: bool, result: str = None, error: str = None,
+                           title: str = None):
         """发送工具执行结束事件"""
         await self.emit(submission_id, EventMsg("tool_execution_end", {
             "tool_name": tool_name,
             "call_id": call_id,
             "success": success,
             "result": result,
-            "error": error
+            "error": error,
+            "title": title
         }))
     
     async def emit_error(self, submission_id: str, message: str):

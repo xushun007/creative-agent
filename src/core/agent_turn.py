@@ -287,7 +287,8 @@ class AgentTurn:
                         submission_id, tool_call.name, tool_call.call_id,
                         response.success, 
                         result_text if response.success else None,
-                        response.error if not response.success else None
+                        response.error if not response.success else None,
+                        response.tool_result.title if response.tool_result else None,
                     )
                 if self.hook_provider:
                     self.hook_provider.on_tool_complete(

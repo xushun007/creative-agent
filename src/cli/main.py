@@ -183,24 +183,40 @@ class CodexCLI:
         elif msg.type == "tool_execution_end":
             tool_name = msg.data.get("tool_name", "")
             success = msg.data.get("success", False)
+            title = msg.data.get("title", "")
             
             if success:
                 console.print(f"[green]✅ 工具 {tool_name} 执行成功[/green]")
                 # 可选：显示工具结果的简要信息
-                result = msg.data.get("result", "")
-                if result and len(result) < 200:  # 只显示简短结果
-                    console.print(f"[dim]结果: {result[:100]}...[/dim]")
+                if title:
+                    console.print(f"[dim]摘要: {title}[/dim]")
+                else:
+                    result = msg.data.get("result", "")
+                    if result and len(result) < 200:  # 只显示简短结果
+                        console.print(f"[dim]结果: {result[:100]}...[/dim]")
             else:
                 error = msg.data.get("error", "未知错误")
-                console.print(f"[red]❌ 工具 {tool_name} 执行失败: {error}[/red]")
+                if title:
+                    console.print(f"[red]❌ 工具 {tool_name} 执行失败: {title} ({error})[/red]")
+                else:
+                    console.print(f"[red]❌ 工具 {tool_name} 执行失败: {error}[/red]")
         
         elif msg.type == "task_progress":
             summary = msg.data.get("summary", [])
             if summary:
-                last = summary[-1]
-                tool = last.get("tool", "unknown")
-                status = last.get("state", {}).get("status", "unknown")
-                console.print(f"[dim]子任务进度: {tool}:{status} (steps={len(summary)})[/dim]")
+                current = msg.data.get("current") or summary[-1]
+                tool = current.get("tool", "unknown")
+                status = current.get("state", {}).get("status", "unknown")
+                title = current.get("state", {}).get("title")
+                if title:
+                    detail = f"{tool}:{title}({status})"
+                else:
+                    detail = f"{tool}({status})"
+                # 去重输出
+                last = getattr(self, "_last_task_progress", None)
+                if last != detail:
+                    self._last_task_progress = detail
+                    console.print(f"[dim]子任务进度: {detail}[/dim]")
         
         elif msg.type == "approval_complete":
             decision = msg.data.get("decision", "")

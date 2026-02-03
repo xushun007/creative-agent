@@ -223,7 +223,7 @@ class AgentTurnTestCase(unittest.IsolatedAsyncioTestCase):
         
         # 验证错误事件发送
         self.event_handler.emit_tool_end.assert_awaited_once_with(
-            'submission-5', 'invalid_tool', 'call-789', False, None, '工具不存在'
+            'submission-5', 'invalid_tool', 'call-789', False, None, '工具不存在', None
         )
 
     async def test_execute_turn_with_tool_returning_none(self):

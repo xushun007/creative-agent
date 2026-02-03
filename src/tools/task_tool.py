@@ -1,7 +1,7 @@
 """TaskTool - 启动子代理处理复杂任务"""
 
 import asyncio
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from .base_tool import BaseTool, ToolContext, ToolResult
 from .task_manager import TaskManager
@@ -418,6 +418,7 @@ class TaskTool(BaseTool[Dict[str, Any]]):
         result_text = ""
         tool_steps: Dict[str, Dict[str, Any]] = {}
         last_summary_key = ""
+        current_event: Optional[Dict[str, Any]] = None
 
         parent_event_handler = None
         if parent_context.extra and isinstance(parent_context.extra, dict):
@@ -427,9 +428,19 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             nonlocal last_summary_key
             if not parent_event_handler:
                 return
-            summary = sorted(tool_steps.values(), key=lambda item: item.get("id", ""))
+            summary = sorted(
+                [
+                    {
+                        "id": item.get("id"),
+                        "tool": item.get("tool"),
+                        "state": item.get("state"),
+                    }
+                    for item in tool_steps.values()
+                ],
+                key=lambda item: item.get("id", ""),
+            )
             summary_key = "|".join(
-                f"{item.get('id')}:{item.get('state', {}).get('status')}"
+                f"{item.get('id')}:{item.get('state', {}).get('status')}:{item.get('state', {}).get('title', '')}"
                 for item in summary
             )
             if summary_key == last_summary_key:
@@ -441,6 +452,7 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                 EventMsg("task_progress", {
                     "task_session_id": task_session_id,
                     "summary": summary,
+                    "current": current_event,
                 })
             )
         
@@ -472,11 +484,21 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                             data = event.msg.data
                             call_id = data.get("call_id")
                             tool_name = data.get("tool_name")
+                            args = data.get("arguments", {}) if isinstance(data.get("arguments", {}), dict) else {}
                             if call_id and tool_name:
+                                title = self._summarize_tool_title(tool_name, args)
                                 tool_steps[call_id] = {
                                     "id": call_id,
                                     "tool": tool_name,
+                                    "args": args,
                                     "state": {"status": "running"},
+                                }
+                                if title:
+                                    tool_steps[call_id]["state"]["title"] = title
+                                current_event = {
+                                    "id": call_id,
+                                    "tool": tool_name,
+                                    "state": tool_steps[call_id]["state"],
                                 }
                                 await _emit_progress()
                         elif event.msg.type == "tool_execution_end":
@@ -484,11 +506,25 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                             call_id = data.get("call_id")
                             tool_name = data.get("tool_name")
                             success = data.get("success", False)
+                            title_from_tool = data.get("title")
                             if call_id and tool_name:
+                                args = tool_steps.get(call_id, {}).get("args", {})
+                                param_title = self._summarize_tool_title(tool_name, args)
                                 tool_steps[call_id] = {
                                     "id": call_id,
                                     "tool": tool_name,
+                                    "args": args,
                                     "state": {"status": "completed" if success else "failed"},
+                                }
+                                if title_from_tool:
+                                    merged = self._merge_titles(title_from_tool, param_title)
+                                    tool_steps[call_id]["state"]["title"] = self._shorten_title(merged)
+                                elif param_title:
+                                    tool_steps[call_id]["state"]["title"] = param_title
+                                current_event = {
+                                    "id": call_id,
+                                    "tool": tool_name,
+                                    "state": tool_steps[call_id]["state"],
                                 }
                                 await _emit_progress()
                         
@@ -519,7 +555,17 @@ class TaskTool(BaseTool[Dict[str, Any]]):
                     result_text = msg.content
                     break
         
-        summary = list(tool_steps.values())
+        summary = sorted(
+            [
+                {
+                    "id": item.get("id"),
+                    "tool": item.get("tool"),
+                    "state": item.get("state"),
+                }
+                for item in tool_steps.values()
+            ],
+            key=lambda item: item.get("id", ""),
+        )
         return result_text or "子代理完成任务，但未返回结果。", summary
     
     async def cancel_subagent(self, session_id: str) -> bool:
@@ -589,6 +635,42 @@ class TaskTool(BaseTool[Dict[str, Any]]):
             lines.append(f"runtime_session_id: {runtime_session_id}")
         lines.append("</task_metadata>")
         return output.rstrip() + "\n\n" + "\n".join(lines)
+
+    def _summarize_tool_title(self, tool_name: str, args: Dict[str, Any]) -> str:
+        """生成简短的工具执行标题，用于进度摘要"""
+        def _pick(*keys: str) -> Optional[str]:
+            for key in keys:
+                val = args.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            return None
+
+        candidate = _pick(
+            "filePath",
+            "path",
+            "command",
+            "url",
+            "pattern",
+            "query",
+            "description",
+        )
+        return self._shorten_title(candidate) if candidate else ""
+
+    def _shorten_title(self, value: str, max_len: int = 80) -> str:
+        if not value:
+            return ""
+        if len(value) <= max_len:
+            return value
+        return "..." + value[-(max_len - 3):]
+
+    def _merge_titles(self, primary: str, secondary: Optional[str]) -> str:
+        if not primary:
+            return secondary or ""
+        if not secondary:
+            return primary
+        if secondary in primary or primary in secondary:
+            return primary if len(primary) <= len(secondary) else secondary
+        return f"{primary} @ {secondary}"
     
     def is_subagent_active(self, session_id: str) -> bool:
         """检查子代理是否活跃
