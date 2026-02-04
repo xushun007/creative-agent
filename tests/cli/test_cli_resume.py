@@ -29,7 +29,14 @@ def temp_session_dir():
 
 
 @pytest.fixture
-def test_sessions(temp_session_dir):
+def temp_workspace_root():
+    """创建临时工作区根目录"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+@pytest.fixture
+def test_sessions(temp_session_dir, temp_workspace_root):
     """创建测试会话"""
     sessions_info = []
     
@@ -38,7 +45,7 @@ def test_sessions(temp_session_dir):
             model=f"test-model-{i}",
             api_key="test-key",
             api_base="https://test.api.com",
-            cwd=Path.cwd() / f"test-workspace-{i}",
+            cwd=temp_workspace_root / f"test-workspace-{i}",
             enable_memory=True,
             session_dir=temp_session_dir,
             auto_load_project_docs=False
@@ -144,14 +151,14 @@ def test_empty_session_dir():
         assert len(all_sessions) == 0, "空目录应该返回空列表"
 
 
-def test_resume_with_multiple_messages(temp_session_dir):
+def test_resume_with_multiple_messages(temp_session_dir, temp_workspace_root):
     """测试恢复包含多条消息的会话"""
     # 创建一个会话并添加多条消息
     config = Config(
         model="test-model",
         api_key="test-key",
         api_base="https://test.api.com",
-        cwd=Path.cwd() / "test-workspace",
+        cwd=temp_workspace_root / "test-workspace",
         enable_memory=True,
         session_dir=temp_session_dir,
         auto_load_project_docs=False

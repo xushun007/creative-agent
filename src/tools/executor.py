@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Union
 from core.config import Config
 from tools.sandbox import SandboxExecutor
 from tools.patch_applier import PatchApplier
+from core.path_guard import build_path_policy, check_path_access
 
 
 class ToolExecutor:
@@ -17,6 +18,7 @@ class ToolExecutor:
         self.config = config
         self.sandbox = SandboxExecutor(config)
         self.patch_applier = PatchApplier(config)
+        self.path_policy = build_path_policy(config)
     
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Union[str, Dict[str, Any]]:
         """执行工具调用"""
@@ -66,6 +68,12 @@ class ToolExecutor:
         
         try:
             path = Path(file_path)
+            if not path.is_absolute():
+                path = self.path_policy.workspace_root / path
+
+            allowed, reason = check_path_access(self.path_policy, path, "read")
+            if not allowed:
+                return f"错误: 访问被拒绝: {reason}"
             
             # 检查文件是否存在
             if not path.exists():
@@ -100,6 +108,12 @@ class ToolExecutor:
         
         try:
             path = Path(file_path)
+            if not path.is_absolute():
+                path = self.path_policy.workspace_root / path
+
+            allowed, reason = check_path_access(self.path_policy, path, "write")
+            if not allowed:
+                return f"错误: 访问被拒绝: {reason}"
             
             # 检查路径是否可写
             if not self.sandbox.is_path_writable(path):
@@ -132,6 +146,12 @@ class ToolExecutor:
         
         try:
             path = Path(file_path)
+            if not path.is_absolute():
+                path = self.path_policy.workspace_root / path
+
+            allowed, reason = check_path_access(self.path_policy, path, "write")
+            if not allowed:
+                return f"错误: 访问被拒绝: {reason}"
             
             # 检查路径是否可写
             if not self.sandbox.is_path_writable(path):

@@ -587,6 +587,32 @@ class PlaceholderClass:
         self.assertEqual(edits_schema["type"], "array")
         self.assertIn("items", edits_schema)
 
+    def test_access_denied_outside_workspace(self):
+        """测试工作区外编辑被拒绝"""
+        async def run_test():
+            outside_dir = tempfile.mkdtemp()
+            try:
+                outside_file = os.path.join(outside_dir, "outside.py")
+                with open(outside_file, 'w') as f:
+                    f.write("print('outside')\n")
+
+                result = await self.multi_edit_tool.execute({
+                    "filePath": outside_file,
+                    "edits": [
+                        {
+                            "oldString": "outside",
+                            "newString": "denied"
+                        }
+                    ]
+                }, self.context)
+
+                self.assertEqual(result.metadata["error"], "multiedit_failed")
+                self.assertIn("访问被拒绝", result.output)
+            finally:
+                shutil.rmtree(outside_dir, ignore_errors=True)
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

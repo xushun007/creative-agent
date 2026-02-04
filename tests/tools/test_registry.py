@@ -4,6 +4,10 @@
 import unittest
 import asyncio
 import logging
+import tempfile
+import shutil
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, Any
 
 # 添加项目根目录到路径
@@ -103,6 +107,10 @@ class TestToolRegistry(unittest.TestCase):
             message_id="test_msg",
             agent="test_agent"
         )
+        self.workspace = tempfile.mkdtemp()
+        self.context.extra = {
+            "config": SimpleNamespace(cwd=Path(self.workspace), sandbox_policy="workspace_write")
+        }
         
         # 禁用日志输出以避免测试时的噪音
         logging.getLogger('tools.registry').setLevel(logging.CRITICAL)
@@ -110,6 +118,7 @@ class TestToolRegistry(unittest.TestCase):
     def tearDown(self):
         """测试后清理"""
         self.registry.clear_cache()
+        shutil.rmtree(self.workspace, ignore_errors=True)
     
     def test_registry_initialization(self):
         """测试注册表初始化"""
@@ -425,27 +434,20 @@ class TestToolRegistry(unittest.TestCase):
         async def run_test():
             # 使用包含默认工具的注册表
             registry = ToolRegistry()
-            
-            # 测试读取工具
-            import tempfile
-            import os
-            
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+
+            # 测试读取工具（工作区内文件）
+            temp_file = os.path.join(self.workspace, "temp.txt")
+            with open(temp_file, "w") as f:
                 f.write("Hello, World!")
-                temp_file = f.name
-            
-            try:
-                result = await registry.execute_tool(
-                    "read",
-                    {"filePath": temp_file},
-                    self.context
-                )
-                
-                self.assertIsNotNone(result)
-                self.assertIn("Hello, World!", result.output)
-                
-            finally:
-                os.unlink(temp_file)
+
+            result = await registry.execute_tool(
+                "read",
+                {"filePath": temp_file},
+                self.context
+            )
+
+            self.assertIsNotNone(result)
+            self.assertIn("Hello, World!", result.output)
         
         asyncio.run(run_test())
     

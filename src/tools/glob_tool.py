@@ -4,6 +4,7 @@ import fnmatch
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 from .base_tool import BaseTool, ToolContext, ToolResult
+from core.path_guard import policy_from_context, check_path_access
 
 
 class GlobTool(BaseTool[Dict[str, Any]]):
@@ -149,9 +150,31 @@ class GlobTool(BaseTool[Dict[str, Any]]):
             raise ValueError("pattern is required")
         
         # 确定搜索路径
-        search_path = params.get("path", os.getcwd())
+        default_root = os.getcwd()
+        if context and context.extra and context.extra.get("config"):
+            default_root = str(context.extra["config"].cwd)
+        search_path = params.get("path", default_root)
+
+        # 访问控制策略
+        policy = policy_from_context(context)
+
         if not os.path.isabs(search_path):
-            search_path = os.path.abspath(search_path)
+            base_dir = Path(os.getcwd()).resolve()
+            try:
+                base_dir.relative_to(policy.workspace_root)
+                resolved_base = base_dir
+            except ValueError:
+                resolved_base = policy.workspace_root
+            search_path = os.path.abspath(os.path.join(str(resolved_base), search_path))
+
+        # 访问控制检查
+        allowed, reason = check_path_access(policy, Path(search_path), "read")
+        if not allowed:
+            return ToolResult(
+                title=pattern,
+                output=f"Error: Access denied: {reason}",
+                metadata={"count": 0, "truncated": False, "error": True}
+            )
         
         # 验证搜索路径存在
         if not os.path.exists(search_path):

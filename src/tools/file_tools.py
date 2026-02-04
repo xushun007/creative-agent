@@ -3,6 +3,7 @@ import mimetypes
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from .base_tool import BaseTool, ToolContext, ToolResult
+from core.path_guard import policy_from_context, check_path_access
 
 
 # 常量配置
@@ -133,10 +134,24 @@ class ReadTool(BaseTool[Dict[str, Any]]):
         offset = params.get("offset", 0)
         limit = params.get("limit", DEFAULT_READ_LIMIT)
         
+        # 访问控制策略
+        policy = policy_from_context(context)
+
         # 转换为绝对路径
         if not os.path.isabs(file_path):
+            file_path = str(policy.workspace_root / file_path)
+        else:
             file_path = os.path.abspath(file_path)
-        
+
+        # 访问控制检查
+        allowed, reason = check_path_access(policy, Path(file_path), "read")
+        if not allowed:
+            return ToolResult(
+                title=f"读取被拒绝: {os.path.basename(file_path)}",
+                output=f"访问被拒绝: {reason}",
+                metadata={"error": "access_denied", "file_path": file_path}
+            )
+
         # 检查文件是否存在
         if not os.path.exists(file_path):
             suggestions = self._get_file_suggestions(file_path)
@@ -289,10 +304,24 @@ class WriteTool(BaseTool[Dict[str, Any]]):
         file_path = params["filePath"]
         content = params["content"]
         
+        # 访问控制策略
+        policy = policy_from_context(context)
+
         # 转换为绝对路径
         if not os.path.isabs(file_path):
+            file_path = str(policy.workspace_root / file_path)
+        else:
             file_path = os.path.abspath(file_path)
-        
+
+        # 访问控制检查
+        allowed, reason = check_path_access(policy, Path(file_path), "write")
+        if not allowed:
+            return ToolResult(
+                title=f"写入被拒绝: {os.path.basename(file_path)}",
+                output=f"访问被拒绝: {reason}",
+                metadata={"error": "access_denied", "file_path": file_path}
+            )
+
         # 检查文件是否已存在
         file_exists = os.path.exists(file_path)
         

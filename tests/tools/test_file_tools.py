@@ -218,6 +218,30 @@ class TestFileTools(unittest.TestCase):
                     self.assertLessEqual(len(line), 2010)  # 允许一些格式字符
         
         asyncio.run(run_test())
+
+    def test_access_denied_outside_workspace(self):
+        """测试读取/写入工作区外被拒绝"""
+        async def run_test():
+            outside_dir = tempfile.mkdtemp()
+            try:
+                outside_file = os.path.join(outside_dir, "outside.txt")
+                with open(outside_file, "w") as f:
+                    f.write("outside")
+
+                read_result = await self.read_tool.execute({
+                    "filePath": outside_file
+                }, self.context)
+                self.assertIn("访问被拒绝", read_result.output)
+
+                write_result = await self.write_tool.execute({
+                    "filePath": outside_file,
+                    "content": "new content"
+                }, self.context)
+                self.assertIn("访问被拒绝", write_result.output)
+            finally:
+                shutil.rmtree(outside_dir, ignore_errors=True)
+
+        asyncio.run(run_test())
     
     def test_write_overwrite_existing_file(self):
         """测试覆盖现有文件"""

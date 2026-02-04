@@ -7,6 +7,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 # 添加项目根目录到路径
 import sys
@@ -37,6 +38,9 @@ class TestListTool(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.original_cwd = os.getcwd()
         os.chdir(self.test_dir)
+        self.context.extra = {
+            "config": SimpleNamespace(cwd=Path(self.test_dir), sandbox_policy="workspace_write")
+        }
         
         # 创建测试目录结构
         self._create_test_structure()
@@ -202,6 +206,20 @@ class TestListTool(unittest.TestCase):
             self.assertNotIn(".env", result.output)
         
         asyncio.run(run_test())
+
+    def test_access_denied_outside_workspace(self):
+        """测试工作区外目录访问被拒绝"""
+        async def run_test():
+            outside_dir = tempfile.mkdtemp()
+            try:
+                result = await self.list_tool.execute({
+                    "path": outside_dir
+                }, self.context)
+                self.assertIn("Access denied", result.output)
+            finally:
+                shutil.rmtree(outside_dir, ignore_errors=True)
+
+        asyncio.run(run_test())
     
     def test_custom_ignore_patterns(self):
         """测试自定义忽略模式"""
@@ -268,7 +286,7 @@ class TestListTool(unittest.TestCase):
         """测试不存在的路径"""
         async def run_test():
             params = {
-                "path": "/nonexistent/path"
+                "path": os.path.join(self.test_dir, "nonexistent")
             }
             
             result = await self.list_tool.execute(params, self.context)

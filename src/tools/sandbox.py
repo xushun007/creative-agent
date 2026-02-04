@@ -10,6 +10,7 @@ import platform
 
 from core.protocol import SandboxPolicy
 from core.config import Config
+from core.path_guard import build_path_policy, check_path_access
 
 
 class SandboxExecutor:
@@ -17,7 +18,13 @@ class SandboxExecutor:
     
     def __init__(self, config: Config):
         self.config = config
-        self.sandbox_policy = SandboxPolicy(config.sandbox_policy)
+        self.path_policy = build_path_policy(config)
+        if self.path_policy.mode == "full_access":
+            self.sandbox_policy = SandboxPolicy.DANGER_FULL_ACCESS
+        elif self.path_policy.mode == "read_only":
+            self.sandbox_policy = SandboxPolicy.READ_ONLY
+        else:
+            self.sandbox_policy = SandboxPolicy.WORKSPACE_WRITE
         self.cwd = config.cwd
         
         # 临时目录用于沙箱
@@ -84,26 +91,8 @@ class SandboxExecutor:
     
     def is_path_writable(self, path: Path) -> bool:
         """检查路径是否可写"""
-        if self.sandbox_policy == SandboxPolicy.READ_ONLY:
-            return False
-        elif self.sandbox_policy == SandboxPolicy.DANGER_FULL_ACCESS:
-            return True
-        
-        path = path.resolve()
-        writable_paths = self.get_writable_paths()
-        
-        for writable in writable_paths:
-            try:
-                writable = writable.resolve()
-                if path == writable or path.is_relative_to(writable):
-                    # 检查是否是受保护的子目录（如.git）
-                    if any(part.startswith('.git') for part in path.parts):
-                        return False
-                    return True
-            except (OSError, ValueError):
-                continue
-        
-        return False
+        allowed, _ = check_path_access(self.path_policy, path, "write")
+        return allowed
     
     async def execute_command(
         self, 

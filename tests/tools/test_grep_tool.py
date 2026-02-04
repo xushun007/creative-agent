@@ -7,6 +7,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 # 添加项目根目录到路径
 import sys
@@ -37,6 +38,9 @@ class TestGrepTool(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.original_cwd = os.getcwd()
         os.chdir(self.test_dir)
+        self.context.extra = {
+            "config": SimpleNamespace(cwd=Path(self.test_dir), sandbox_policy="workspace_write")
+        }
         
         # 创建测试文件
         self._create_test_files()
@@ -202,6 +206,21 @@ This line has TEST in uppercase.
                 # 应该只在Python文件中搜索
                 self.assertIn("test.py", result.output.lower() or "")
         
+        asyncio.run(run_test())
+
+    def test_access_denied_outside_workspace(self):
+        """测试工作区外搜索被拒绝"""
+        async def run_test():
+            outside_dir = tempfile.mkdtemp()
+            try:
+                result = await self.grep_tool.execute({
+                    "pattern": "test",
+                    "path": outside_dir
+                }, self.context)
+                self.assertIn("Access denied", result.output)
+            finally:
+                shutil.rmtree(outside_dir, ignore_errors=True)
+
         asyncio.run(run_test())
     
     def test_files_with_matches_output(self):

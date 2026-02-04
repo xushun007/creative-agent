@@ -7,6 +7,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 # 添加项目根目录到路径
 import sys
@@ -37,6 +38,9 @@ class TestGlobTool(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.original_cwd = os.getcwd()
         os.chdir(self.test_dir)
+        self.context.extra = {
+            "config": SimpleNamespace(cwd=Path(self.test_dir), sandbox_policy="workspace_write")
+        }
         
         # 创建测试文件结构
         self._create_test_files()
@@ -125,6 +129,21 @@ class TestGlobTool(unittest.TestCase):
         properties = schema["properties"]
         self.assertIn("pattern", properties)
         self.assertIn("path", properties)
+
+    def test_access_denied_outside_workspace(self):
+        """测试工作区外搜索被拒绝"""
+        async def run_test():
+            outside_dir = tempfile.mkdtemp()
+            try:
+                result = await self.glob_tool.execute({
+                    "pattern": "*.py",
+                    "path": outside_dir
+                }, self.context)
+                self.assertIn("Access denied", result.output)
+            finally:
+                shutil.rmtree(outside_dir, ignore_errors=True)
+
+        asyncio.run(run_test())
     
     def test_expand_braces(self):
         """测试大括号展开功能"""
@@ -327,7 +346,7 @@ class TestGlobTool(unittest.TestCase):
         async def run_test():
             params = {
                 "pattern": "*.py",
-                "path": "/nonexistent/path"
+                "path": os.path.join(self.test_dir, "nonexistent")
             }
             
             result = await self.glob_tool.execute(params, self.context)
