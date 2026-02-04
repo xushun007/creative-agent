@@ -13,12 +13,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.web_tools import WebFetchTool, WebSearchTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.web_tools import WebFetchTool, WebSearchTool
+    from creative_agent.tools.base_tool import ToolContext
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.web_tools import WebFetchTool, WebSearchTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.web_tools import WebFetchTool, WebSearchTool
+    from creative_agent.tools.base_tool import ToolContext
 
 
 class TestWebFetchTool(unittest.TestCase):
@@ -211,7 +211,7 @@ class TestWebFetchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.WebFetchTool._fetch_content')
+    @patch('creative_agent.tools.web_tools.WebFetchTool._fetch_content')
     def test_successful_execution_text_format(self, mock_fetch):
         """测试成功执行 - 文本格式"""
         async def run_test():
@@ -233,7 +233,7 @@ class TestWebFetchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.WebFetchTool._fetch_content')
+    @patch('creative_agent.tools.web_tools.WebFetchTool._fetch_content')
     def test_successful_execution_markdown_format(self, mock_fetch):
         """测试成功执行 - Markdown 格式"""
         async def run_test():
@@ -252,7 +252,7 @@ class TestWebFetchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.WebFetchTool._fetch_content')
+    @patch('creative_agent.tools.web_tools.WebFetchTool._fetch_content')
     def test_successful_execution_html_format(self, mock_fetch):
         """测试成功执行 - HTML 格式"""
         async def run_test():
@@ -269,7 +269,7 @@ class TestWebFetchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.WebFetchTool._fetch_content')
+    @patch('creative_agent.tools.web_tools.WebFetchTool._fetch_content')
     def test_non_html_content(self, mock_fetch):
         """测试非 HTML 内容"""
         async def run_test():
@@ -285,7 +285,7 @@ class TestWebFetchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.WebFetchTool._fetch_content')
+    @patch('creative_agent.tools.web_tools.WebFetchTool._fetch_content')
     def test_cache_usage(self, mock_fetch):
         """测试缓存使用"""
         async def run_test():
@@ -431,7 +431,7 @@ class TestWebSearchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.DDGS')
+    @patch('creative_agent.tools.web_tools.DDGS')
     def test_successful_search(self, mock_ddgs_class):
         """测试成功搜索"""
         async def run_test():
@@ -467,7 +467,7 @@ class TestWebSearchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.DDGS')
+    @patch('creative_agent.tools.web_tools.DDGS')
     def test_no_results_found(self, mock_ddgs_class):
         """测试未找到搜索结果"""
         async def run_test():
@@ -485,7 +485,7 @@ class TestWebSearchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.DDGS')
+    @patch('creative_agent.tools.web_tools.DDGS')
     def test_search_with_all_parameters(self, mock_ddgs_class):
         """测试使用所有参数的搜索"""
         async def run_test():
@@ -522,7 +522,7 @@ class TestWebSearchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.DDGS')
+    @patch('creative_agent.tools.web_tools.DDGS')
     def test_search_error_handling(self, mock_ddgs_class):
         """测试搜索错误处理"""
         async def run_test():
@@ -540,7 +540,7 @@ class TestWebSearchTool(unittest.TestCase):
         
         asyncio.run(run_test())
     
-    @patch('tools.web_tools.DDGS')
+    @patch('creative_agent.tools.web_tools.DDGS')
     def test_raw_results_limit(self, mock_ddgs_class):
         """测试原始结果限制"""
         async def run_test():

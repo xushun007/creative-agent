@@ -13,12 +13,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.file_tools import ReadTool, WriteTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.file_tools import ReadTool, WriteTool
+    from creative_agent.tools.base_tool import ToolContext
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.file_tools import ReadTool, WriteTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.file_tools import ReadTool, WriteTool
+    from creative_agent.tools.base_tool import ToolContext
 
 
 class TestFileTools(unittest.TestCase):

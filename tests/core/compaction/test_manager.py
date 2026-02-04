@@ -7,9 +7,9 @@ import pytest
 # 添加 src 到路径以避免触发 src.core.__init__ 的导入链
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from core.compaction.manager import CompactionManager
-from core.compaction.strategies.opencode import OpenCodeStrategy
-from core.compaction.base import CompactionContext
+from creative_agent.core.compaction.manager import CompactionManager
+from creative_agent.core.compaction.strategies.opencode import OpenCodeStrategy
+from creative_agent.core.compaction.base import CompactionContext
 
 
 class TestCompactionManager:
@@ -248,7 +248,7 @@ class TestCompactionMetrics:
     
     def test_success_rate_with_no_attempts(self):
         """测试：无尝试时成功率为0"""
-        from core.compaction.manager import CompactionMetrics
+        from creative_agent.core.compaction.manager import CompactionMetrics
         
         metrics = CompactionMetrics(strategy_name="test")
         
@@ -256,7 +256,7 @@ class TestCompactionMetrics:
     
     def test_success_rate_calculation(self):
         """测试：成功率计算"""
-        from core.compaction.manager import CompactionMetrics
+        from creative_agent.core.compaction.manager import CompactionMetrics
         
         metrics = CompactionMetrics(strategy_name="test")
         metrics.success_count = 8
@@ -266,7 +266,7 @@ class TestCompactionMetrics:
     
     def test_avg_duration_with_no_success(self):
         """测试：无成功时平均耗时为0"""
-        from core.compaction.manager import CompactionMetrics
+        from creative_agent.core.compaction.manager import CompactionMetrics
         
         metrics = CompactionMetrics(strategy_name="test")
         
@@ -274,7 +274,7 @@ class TestCompactionMetrics:
     
     def test_avg_duration_calculation(self):
         """测试：平均耗时计算"""
-        from core.compaction.manager import CompactionMetrics
+        from creative_agent.core.compaction.manager import CompactionMetrics
         
         metrics = CompactionMetrics(strategy_name="test")
         metrics.success_count = 4

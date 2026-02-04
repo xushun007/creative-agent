@@ -8,8 +8,8 @@ from datetime import datetime
 # 添加 src 到路径以避免触发 src.core.__init__ 的导入链
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from core.compaction.strategies.opencode import OpenCodeStrategy
-from core.compaction.base import CompactionContext
+from creative_agent.core.compaction.strategies.opencode import OpenCodeStrategy
+from creative_agent.core.compaction.base import CompactionContext
 
 
 class TestOpenCodeStrategy:

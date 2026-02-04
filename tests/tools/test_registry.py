@@ -16,18 +16,18 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
-    from tools.base_tool import BaseTool, ToolContext, ToolResult
-    from tools.edit_tool import EditTool
-    from tools.file_tools import ReadTool, WriteTool
-    from tools.bash import BashTool
+    from creative_agent.tools.registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
+    from creative_agent.tools.base_tool import BaseTool, ToolContext, ToolResult
+    from creative_agent.tools.edit_tool import EditTool
+    from creative_agent.tools.file_tools import ReadTool, WriteTool
+    from creative_agent.tools.bash import BashTool
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
-    from tools.base_tool import BaseTool, ToolContext, ToolResult
-    from tools.edit_tool import EditTool
-    from tools.file_tools import ReadTool, WriteTool
-    from tools.bash import BashTool
+    from creative_agent.tools.registry import ToolRegistry, ToolInfo, get_global_registry, reset_global_registry
+    from creative_agent.tools.base_tool import BaseTool, ToolContext, ToolResult
+    from creative_agent.tools.edit_tool import EditTool
+    from creative_agent.tools.file_tools import ReadTool, WriteTool
+    from creative_agent.tools.bash import BashTool
 
 
 # 测试用的自定义工具

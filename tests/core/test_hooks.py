@@ -12,13 +12,13 @@ import json
 # Keep consistent with existing tests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
-from core.agent_turn import AgentTurn  # noqa: E402
-from core.config import Config  # noqa: E402
-from core.hooks import HookContext, HooksBase, HookProvider, LoggerHooks, set_hook_provider  # noqa: E402
-from core.model_client import ChatResponse  # noqa: E402
-from core.protocol import TokenUsage  # noqa: E402
-from core.session import Session  # noqa: E402
-from tools.base_tool import ToolResult  # noqa: E402
+from creative_agent.core.agent_turn import AgentTurn  # noqa: E402
+from creative_agent.core.config import Config  # noqa: E402
+from creative_agent.core.hooks import HookContext, HooksBase, HookProvider, LoggerHooks, set_hook_provider  # noqa: E402
+from creative_agent.core.model_client import ChatResponse  # noqa: E402
+from creative_agent.core.protocol import TokenUsage  # noqa: E402
+from creative_agent.core.session import Session  # noqa: E402
+from creative_agent.tools.base_tool import ToolResult  # noqa: E402
 
 
 class CollectorHooks(HooksBase):
@@ -232,7 +232,7 @@ class LoggerHooksTestCase(unittest.TestCase):
     def test_logger_hooks_outputs_json(self):
         provider = HookProvider(with_default_processors=True)
 
-        with patch("utils.logger.logger.info") as logger_info:
+        with patch("creative_agent.utils.logger.logger.info") as logger_info:
             provider.on_session_start("s1", {"foo": "bar"})
 
             logger_info.assert_called()

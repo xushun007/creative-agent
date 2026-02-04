@@ -6,8 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from core.session import Session
-from core.config import Config
+from creative_agent.core.session import Session
+from creative_agent.core.config import Config
 
 
 class TestSessionCompaction:

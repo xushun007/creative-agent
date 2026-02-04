@@ -13,12 +13,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.bash import BashTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.bash import BashTool
+    from creative_agent.tools.base_tool import ToolContext
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.bash import BashTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.bash import BashTool
+    from creative_agent.tools.base_tool import ToolContext
 
 
 class TestBashTool(unittest.TestCase):

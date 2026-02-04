@@ -1,0 +1,457 @@
+"""Codex会话管理"""
+
+import asyncio
+import json
+from typing import Optional, Dict, Any
+import uuid
+
+from .protocol import (
+    Submission, Event, EventMsg, Op, TokenUsage
+)
+from .config import Config
+from .model_client import Message, ModelClient
+from .event_handler import EventHandler
+from .hooks import get_hook_provider
+from .compaction.manager import CompactionManager
+from .compaction.strategies.opencode import OpenCodeStrategy
+from .compaction.base import CompactionContext
+from .memory import MemoryManager, MemoryMessage
+from creative_agent.utils.logger import logger
+
+
+class Session:
+    """Codex会话"""
+    
+    def __init__(
+        self, 
+        config: Config, 
+        memory_manager: Optional[MemoryManager] = None,
+        parent_session_id: Optional[str] = None,
+        agent_name: Optional[str] = None,
+    ):
+        self.config = config
+        
+        # 父子 Session 关系
+        self.parent_session_id = parent_session_id
+        self.is_subagent_session = parent_session_id is not None
+        
+        # Agent 系统
+        from creative_agent.core.agents import AgentRegistry, create_agent_tool_registry
+        
+        self.agent_registry = AgentRegistry.get_instance()
+        
+        # 确定使用的 agent
+        if agent_name:
+            self.agent = self.agent_registry.get(agent_name)
+            if not self.agent:
+                raise ValueError(f"Agent '{agent_name}' not found in registry")
+        else:
+            # 使用默认 agent
+            default_name = getattr(config, 'default_agent', 'build')
+            self.agent = self.agent_registry.get(default_name)
+            if not self.agent:
+                # 降级到 build
+                self.agent = self.agent_registry.get('build')
+        
+        logger.info(f"Session 使用 agent: {self.agent.name} (mode={self.agent.mode})")
+        
+        # 集成工具注册系统 - 基于 agent 创建过滤后的工具注册表
+        if self.is_subagent_session:
+            # 子 session：创建过滤的工具注册表（自动排除 task）
+            self.tool_registry = create_agent_tool_registry(self.agent)
+            logger.info(f"子 Session: 创建过滤工具注册表 (排除 task 工具)")
+        else:
+            # 主 session：使用全局工具注册表或基于 agent 过滤
+            if "*" in self.agent.allowed_tools:
+                from creative_agent.tools.registry import get_global_registry
+                self.tool_registry = get_global_registry()
+                if not getattr(config, "enable_subagent", True):
+                    self.tool_registry.disable_tool("task")
+            else:
+                self.tool_registry = create_agent_tool_registry(self.agent)
+            logger.info(f"主 Session: 工具注册表已创建")
+        
+        # 应用 agent 的配置
+        if self.agent.system_prompt:
+            # 覆盖配置的系统提示
+            config.user_instructions = self.agent.system_prompt
+            logger.debug(f"应用 agent 系统提示: {self.agent.name}")
+        
+        if self.agent.model_override:
+            # 覆盖模型配置
+            config.model = self.agent.model_override
+            logger.debug(f"覆盖模型为: {self.agent.model_override}")
+        
+        # 应用 agent 的执行参数
+        config.max_turns = self.agent.max_turns
+        logger.debug(f"设置 max_turns: {self.agent.max_turns}")
+        
+        # 记忆管理器（可选）- 支持传入已恢复的 memory_manager
+        self.memory_manager: Optional[MemoryManager] = memory_manager
+        if self.memory_manager:
+            # 使用传入的 memory_manager（已恢复的会话）
+            self.session_id = self.memory_manager.session_id
+            logger.info(f"使用已恢复的会话: {self.session_id}, 消息数: {len(self.memory_manager.messages)}")
+        else:
+            # 创建新会话
+            self.session_id = str(uuid.uuid4())
+            if getattr(config, 'enable_memory', True):
+                # 记录父子关系
+                memory_metadata = {}
+                if self.parent_session_id:
+                    memory_metadata['parent_session_id'] = self.parent_session_id
+                    memory_metadata['agent_name'] = self.agent.name
+                    memory_metadata['agent_mode'] = self.agent.mode
+                
+                self.memory_manager = MemoryManager(
+                    session_dir=config.session_dir,
+                    session_id=self.session_id,  # 由 Session 传入
+                    cwd=config.cwd,
+                    model=config.model,
+                    config=config,  # 传入完整配置
+                    tool_registry=self.tool_registry,  # 传入工具注册器
+                    user_instructions=config.user_instructions,
+                    auto_load_project_docs=getattr(config, 'auto_load_project_docs', True)
+                )
+                logger.info(f"记忆系统已启用，会话ID: {self.session_id}, 存储路径: {self.memory_manager.rollout_path}")
+        
+        # 创建模型客户端，传入工具注册器和记忆管理器
+        self.model_client = ModelClient(config, self.tool_registry, self.memory_manager)
+        
+        # 队列
+        self.submission_queue = asyncio.Queue()
+        
+        # 统一事件处理器 - 内部管理event_queue
+        self.event_handler = EventHandler()
+
+        # Hook provider
+        self.hook_provider = get_hook_provider()
+        self.hook_provider.set_disabled(not getattr(config, "enable_hooks", False))
+        
+        # 会话状态
+        self.is_active = False
+        self.current_task_id: Optional[str] = None
+        self.approval_pending: Dict[str, Submission] = {}
+        
+        # Token统计
+        self.total_token_usage = TokenUsage()
+        
+        # 消息压缩管理器（可选）
+        self.compaction_manager: Optional[CompactionManager] = None
+        if getattr(config, 'enable_compaction', False):
+            # 从Config读取压缩配置
+            strategy_config = {
+                "prune_minimum": getattr(config, 'compaction_prune_minimum', 5000),
+                "prune_protect": getattr(config, 'compaction_prune_protect', 10000),
+                "protect_turns": getattr(config, 'compaction_protect_turns', 2),
+                "auto_threshold": getattr(config, 'compaction_auto_threshold', 0.75),
+            }
+            self.compaction_manager = CompactionManager()
+            self.compaction_manager.register_strategy("opencode", OpenCodeStrategy(strategy_config))
+            self.compaction_manager.set_strategy("opencode")
+    
+    
+    async def start(self):
+        """启动会话"""
+        self.is_active = True
+        
+        # 发送会话配置事件（包含 agent 信息）
+        await self.event_handler.emit(self.session_id, EventMsg("session_configured", {
+            "session_id": self.session_id,
+            "parent_session_id": self.parent_session_id,
+            "agent_name": self.agent.name,
+            "agent_mode": self.agent.mode,
+            "model": self.config.model,
+            "cwd": str(self.config.cwd),
+            "max_turns": self.config.max_turns,
+        }))
+        self.hook_provider.on_session_start(
+            self.session_id,
+            {
+                "model": self.config.model, 
+                "cwd": str(self.config.cwd),
+                "agent": self.agent.name,
+                "parent_session_id": self.parent_session_id,
+            },
+        )
+    
+    async def stop(self):
+        """停止会话"""
+        self.is_active = False
+        
+        # 发送会话结束事件
+        await self.event_handler.emit(self.session_id, EventMsg("shutdown_complete", {}))
+        self.hook_provider.on_session_stop(self.session_id, {})
+
+    def abort_current_task(self):
+        """触发当前任务的中断事件（用于联动取消工具）"""
+        if hasattr(self, "_current_abort_event") and self._current_abort_event:
+            self._current_abort_event.set()
+    
+    async def cleanup(self):
+        """清理会话资源
+        
+        释放会话占用的所有资源，包括：
+        - 关闭模型客户端连接
+        - 刷新记忆系统（如果启用）
+        """
+        logger.info(f"清理 Session 资源: {self.session_id}")
+        
+        # 1. 关闭模型客户端连接
+        if self.model_client and hasattr(self.model_client, 'close'):
+            try:
+                await self.model_client.close()
+            except Exception as e:
+                logger.warning(f"关闭模型客户端失败: {e}")
+        
+        # 2. 刷新记忆管理器（仅主 Session）
+        if self.memory_manager and not self.is_subagent_session:
+            try:
+                await self.memory_manager.flush()
+                logger.debug("记忆系统已刷新")
+            except Exception as e:
+                logger.warning(f"刷新记忆系统失败: {e}")
+        
+        logger.info(f"Session 资源清理完成: {self.session_id}")
+    
+    async def submit_operation(self, op: Op) -> str:
+        """提交操作"""
+        submission = Submission.create(op)
+        await self.submission_queue.put(submission)
+        return submission.id
+    
+    async def get_next_event(self) -> Optional[Event]:
+        """获取下一个事件"""
+        return await self.event_handler.get_next_event()
+    
+    async def process_submissions(self):
+        """处理提交队列"""
+        while self.is_active:
+            try:
+                submission = await asyncio.wait_for(
+                    self.submission_queue.get(), timeout=0.1
+                )
+                await self._handle_submission(submission)
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                submission_id = submission.id if 'submission' in locals() else "unknown"
+                await self.event_handler.emit_error(submission_id, f"处理提交时出错: {str(e)}")
+                self.hook_provider.on_error(
+                    self.session_id,
+                    submission_id if submission_id != "unknown" else None,
+                    {"message": str(e), "stage": "process_submissions"},
+                )
+    
+    async def _handle_submission(self, submission: Submission):
+        """处理单个提交"""
+        op = submission.op
+        
+        if op.type == "user_input":
+            await self._handle_user_input(submission)
+        elif op.type == "interrupt":
+            await self._handle_interrupt(submission)
+        elif op.type == "exec_approval":
+            await self._handle_exec_approval(submission)
+        else:
+            await self.event_handler.emit_error(submission.id, f"未知操作类型: {op.type}")
+    
+    async def _handle_user_input(self, submission: Submission):
+        """处理用户输入 - 使用AgentTurn实现ReAct循环"""
+        op = submission.op
+        
+        # 发送任务开始事件
+        await self.event_handler.emit_task_started(submission.id)
+        self.hook_provider.on_task_start(self.session_id, submission.id, {})
+        
+        # 添加用户消息到对话历史
+        if op.items:
+            user_text = " ".join(item.text for item in op.items if item.text)
+            self.model_client.add_user_message(user_text)
+            
+            # 发送用户消息事件
+            await self.event_handler.emit_user_message(submission.id, user_text)
+        
+        # 每个提交的中断事件（用于联动取消）
+        self._current_abort_event = asyncio.Event()
+
+        # 创建AgentTurn实例
+        from .agent_turn import AgentTurn
+        agent_turn = AgentTurn(
+            model_client=self.model_client,
+            tool_registry=self.tool_registry,
+            event_handler=self.event_handler,
+            session_id=self.session_id,
+            hook_provider=self.hook_provider,
+            abort_event=self._current_abort_event,
+        )
+        
+        # ReAct 循环：持续对话直到任务完成
+        max_turns = self.config.max_turns  # 防止无限循环
+        turn_count = 0
+        turns_executed = 0
+        last_agent_message = None
+        
+        while turn_count < max_turns:
+            try:
+                # 执行一个AgentTurn
+                turn_result = await agent_turn.execute_turn(submission.id)
+                turns_executed += 1
+                
+                # 更新token使用统计
+                if turn_result.token_usage:
+                    self._update_token_usage(turn_result.token_usage)
+                
+                # 记录最后的agent消息内容（assistant消息已在AgentTurn中添加）
+                if turn_result.text_content:
+                    last_agent_message = turn_result.text_content
+                
+                # 如果没有工具调用，任务完成
+                if not turn_result.has_tool_calls():
+                    break
+                
+                # 每轮后检查并执行消息压缩
+                await self._check_and_compact(submission.id)
+                
+                # 继续下一轮对话
+                turn_count += 1
+                
+            except Exception as e:
+                await self.event_handler.emit_error(submission.id, f"AgentTurn执行失败: {str(e)}")
+                break
+        
+        # 检查是否达到最大轮次
+        if turn_count >= max_turns:
+            await self.event_handler.emit_error(
+                submission.id, 
+                f"任务执行达到最大轮次限制 ({max_turns})，可能存在循环"
+            )
+            self.hook_provider.on_error(
+                self.session_id,
+                submission.id,
+                {"message": "max_turns_reached", "max_turns": max_turns},
+            )
+        
+        # 发送任务完成事件
+        await self.event_handler.emit_task_complete(
+            submission.id, 
+            last_agent_message or "任务已完成"
+        )
+        self.hook_provider.on_task_complete(
+            self.session_id,
+            submission.id,
+            {
+                "last_message": last_agent_message or "任务已完成",
+                "turns": turns_executed,
+            },
+        )
+    
+    
+    async def _handle_interrupt(self, submission: Submission):
+        """处理中断"""
+        self.current_task_id = None
+
+        # 触发当前提交的中断事件（供工具联动取消）
+        if hasattr(self, "_current_abort_event") and self._current_abort_event:
+            self._current_abort_event.set()
+        
+        await self.event_handler.emit(submission.id, EventMsg("turn_aborted", {"reason": "interrupted"}))
+    
+    async def _handle_exec_approval(self, submission: Submission):
+        """处理执行批准 - 委托给当前的AgentTurn处理"""
+        op = submission.op
+        decision = op.decision
+        call_id = getattr(op, 'call_id', None)
+        
+        if not call_id:
+            await self.event_handler.emit_error(submission.id, "批准请求缺少call_id")
+            return
+        
+        # 注意：这里需要访问当前活跃的AgentTurn实例
+        # 为简化实现，我们暂时保留原有的approval_pending机制
+        # 在实际使用中，可能需要更复杂的状态管理
+        
+        approved = decision in ["approved", "approved_for_session"]
+        
+        # 发送批准决定事件
+        await self.event_handler.emit(submission.id, EventMsg("approval_decision", {
+            "call_id": call_id,
+            "decision": decision,
+            "approved": approved
+        }))
+    
+    def _update_token_usage(self, usage: TokenUsage):
+        """更新token使用统计"""
+        self.total_token_usage.input_tokens += usage.input_tokens
+        self.total_token_usage.output_tokens += usage.output_tokens
+        self.total_token_usage.total_tokens += usage.total_tokens
+        
+        # 发送token统计事件
+        asyncio.create_task(self.event_handler.emit(
+            self.session_id, 
+            EventMsg.token_count(self.total_token_usage)
+        ))
+    
+    
+    async def _check_and_compact(self, submission_id: str):
+        """检查并执行消息压缩（与 MemoryManager 集成）"""
+        if not self.compaction_manager:
+            return
+        
+        try:
+            # 从 memory_manager 或 model_client 获取消息
+            if self.memory_manager:
+                messages = self.memory_manager.get_context_for_llm()
+                current_tokens = self.memory_manager.get_stats()["estimated_tokens"]
+            else:
+                messages = [msg.to_dict() for msg in self.model_client.conversation_history]
+                current_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
+            
+            context = CompactionContext(
+                messages=messages,
+                current_tokens=current_tokens,
+                max_tokens=getattr(self.config, 'max_context_tokens', 128000),
+                model_name=self.config.model,
+                session_id=self.session_id,
+                model_client=self.model_client
+            )
+            
+            result = await self.compaction_manager.check_and_compact(context)
+            
+            if result and result.success:
+                # 更新消息历史
+                if self.memory_manager:
+                    from .memory import MemoryMessage
+                    from datetime import datetime
+                    # 将压缩后的消息转换回 MemoryMessage
+                    new_messages = [
+                        MemoryMessage.from_dict(msg) if not isinstance(msg, MemoryMessage) 
+                        else msg
+                        for msg in result.new_messages
+                    ]
+                    self.memory_manager.replace_messages(new_messages)
+                    
+                    # 记录压缩操作
+                    self.memory_manager.record_compaction(
+                        summary=f"压缩完成：删除 {result.removed_count} 条消息",
+                        original_count=result.removed_count,
+                        tokens_saved=result.tokens_saved,
+                        strategy=result.strategy_name
+                    )
+                else:
+                    self.model_client.conversation_history = [
+                        Message.from_dict(msg) for msg in result.new_messages
+                    ]
+                
+                # 发送压缩完成事件
+                await self.event_handler.emit(submission_id, EventMsg("compaction_complete", {
+                    "removed_count": result.removed_count,
+                    "tokens_saved": result.tokens_saved,
+                    "strategy": result.strategy_name
+                }))
+                
+                logger.info(f"压缩完成：删除 {result.removed_count} 条消息，节省 {result.tokens_saved} tokens")
+        
+        except Exception as e:
+            # 压缩失败不应影响正常流程，只记录日志
+            logger.warning(f"消息压缩失败: {e}")

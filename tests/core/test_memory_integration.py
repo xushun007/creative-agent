@@ -5,9 +5,9 @@ import tempfile
 import asyncio
 from pathlib import Path
 
-from src.core.config import Config
-from src.core.session import Session
-from src.core.memory import MemoryManager
+from creative_agent.core.config import Config
+from creative_agent.core.session import Session
+from creative_agent.core.memory import MemoryManager
 
 
 @pytest.fixture

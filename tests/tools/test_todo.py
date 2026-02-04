@@ -12,13 +12,13 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.todo import TodoWriteTool, TodoReadTool, TodoState, TodoInfo
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.todo import TodoWriteTool, TodoReadTool, TodoState, TodoInfo
+    from creative_agent.tools.base_tool import ToolContext
 except ImportError:
     # 尝试相对导入
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.todo import TodoWriteTool, TodoReadTool, TodoState, TodoInfo
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.todo import TodoWriteTool, TodoReadTool, TodoState, TodoInfo
+    from creative_agent.tools.base_tool import ToolContext
 
 
 class TestTodoTools(unittest.TestCase):

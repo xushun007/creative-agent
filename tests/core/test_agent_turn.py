@@ -12,10 +12,10 @@ from pathlib import Path
 # 添加项目根目录到 Python 路径，保持与现有测试一致
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
-from core.agent_turn import AgentTurn, AgentTurnResult  # noqa: E402
-from core.model_client import ChatResponse  # noqa: E402
-from core.protocol import TokenUsage  # noqa: E402
-from tools.base_tool import ToolResult  # noqa: E402
+from creative_agent.core.agent_turn import AgentTurn, AgentTurnResult  # noqa: E402
+from creative_agent.core.model_client import ChatResponse  # noqa: E402
+from creative_agent.core.protocol import TokenUsage  # noqa: E402
+from creative_agent.tools.base_tool import ToolResult  # noqa: E402
 
 
 class AgentTurnTestCase(unittest.IsolatedAsyncioTestCase):
@@ -492,7 +492,7 @@ class AgentTurnTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(empty_result.get_summary(), "空响应")
         
         # 测试完整结果
-        from core.agent_turn import ToolCallRequest, ToolCallResponse, ThoughtResult
+        from creative_agent.core.agent_turn import ToolCallRequest, ToolCallResponse, ThoughtResult
         
         full_result = AgentTurnResult(
             text_content="测试响应",

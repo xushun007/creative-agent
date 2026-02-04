@@ -10,9 +10,9 @@ from unittest.mock import patch, AsyncMock
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
-from tools.task_tool import TaskTool
-from tools.task_manager import TaskManager
-from tools.base_tool import ToolContext
+from creative_agent.tools.task_tool import TaskTool
+from creative_agent.tools.task_manager import TaskManager
+from creative_agent.tools.base_tool import ToolContext
 
 
 class TestTaskTool(unittest.TestCase):

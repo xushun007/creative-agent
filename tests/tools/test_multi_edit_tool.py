@@ -12,12 +12,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from tools.multi_edit_tool import MultiEditTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.multi_edit_tool import MultiEditTool
+    from creative_agent.tools.base_tool import ToolContext
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-    from tools.multi_edit_tool import MultiEditTool
-    from tools.base_tool import ToolContext
+    from creative_agent.tools.multi_edit_tool import MultiEditTool
+    from creative_agent.tools.base_tool import ToolContext
 
 
 class TestMultiEditTool(unittest.TestCase):

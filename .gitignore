@@ -5,6 +5,7 @@ venv/
 # Python cache
 __pycache__/
 *.pyc
+*.pyo
 
 # Build artifacts
 build/
@@ -20,6 +21,18 @@ dist/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.uv_cache/
 
 # Environment variables (contains sensitive data)
 .env
@@ -43,3 +56,7 @@ doc/
 examples/
 
 uv.lock
+
+# Dependency exports (generated)
+requirements.txt
+requirements-dev.txt

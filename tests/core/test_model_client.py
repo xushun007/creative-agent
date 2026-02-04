@@ -14,11 +14,11 @@ from typing import Dict, Any, List
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
-    from core.model_client import ModelClient, Message, ChatResponse
-    from core.config import Config
-    from core.protocol import TokenUsage
-    from tools.registry import ToolRegistry, get_global_registry, reset_global_registry
-    from tools.base_tool import BaseTool, ToolContext, ToolResult
+    from creative_agent.core.model_client import ModelClient, Message, ChatResponse
+    from creative_agent.core.config import Config
+    from creative_agent.core.protocol import TokenUsage
+    from creative_agent.tools.registry import ToolRegistry, get_global_registry, reset_global_registry
+    from creative_agent.tools.base_tool import BaseTool, ToolContext, ToolResult
 except ImportError as e:
     print(f"导入错误: {e}")
     sys.exit(1)

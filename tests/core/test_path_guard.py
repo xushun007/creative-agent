@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
-from core.path_guard import build_path_policy, check_path_access
+from creative_agent.core.path_guard import build_path_policy, check_path_access
 
 
 class DummyConfig:
