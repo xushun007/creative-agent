@@ -10,7 +10,7 @@
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any, Literal, Tuple
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
 
@@ -18,7 +18,7 @@ class Config(BaseSettings):
     """配置类 - 支持.env文件和环境变量"""
     
     model_config = SettingsConfigDict(
-        env_file=".env.mb",
+        env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="CTV_",
         case_sensitive=False,
@@ -28,8 +28,16 @@ class Config(BaseSettings):
     # 模型配置
     model_provider: str = Field(default="deepseek", description="模型提供商")
     model: str = Field(default="qwen-plus", description="模型名称")
-    api_key: Optional[str] = Field(default=None, description="API密钥")
-    api_base: Optional[str] = Field(default=None, description="API基础URL")
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API密钥",
+        validation_alias=AliasChoices("api_key", "CTV_API_KEY", "OPENAI_API_KEY"),
+    )
+    api_base: Optional[str] = Field(
+        default=None,
+        description="API基础URL",
+        validation_alias=AliasChoices("api_base", "CTV_API_BASE", "OPENAI_BASE_URL"),
+    )
     
     # 工作目录
     cwd: Path = Field(default_factory=lambda: Path.cwd() / "workspace", description="工作目录")
@@ -96,7 +104,7 @@ class Config(BaseSettings):
     @field_validator("api_key", mode="before")
     @classmethod
     def validate_api_key(cls, v: Optional[str]) -> Optional[str]:
-        """加载 API Key，支持 OPENAI_API_KEY"""
+        """加载 API Key，兼容 OPENAI_API_KEY"""
         if v:
             return v
         return os.getenv("OPENAI_API_KEY")
@@ -119,7 +127,7 @@ class Config(BaseSettings):
     def validate_required_fields(self):
         """验证必需字段"""
         if not self.api_key:
-            raise ValueError("API key is required. Set OPENAI_API_KEY or provide api_key")
+            raise ValueError("API key is required. Set OPENAI_API_KEY / CTV_API_KEY or provide api_key")
         if not self.model:
             raise ValueError("Model name is required")
         return self

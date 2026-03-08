@@ -10,51 +10,40 @@
 - 支持会话持久化与恢复（memory/session）
 - 支持上下文压缩（compaction，默认关闭）
 
-## 项目结构
-
-```text
-src/
-  cli/            # Typer CLI 入口
-  core/           # Engine / Session / Config / Memory / Hooks
-  tools/          # 工具实现与注册
-  prompt/         # 系统提示词与模板
-tests/            # 单元测试
-workspace/        # 默认工作目录
-```
 
 ## 环境要求
 
 - Python 3.10+
-- 可用的模型 API Key（最少需要 `OPENAI_API_KEY`）
+- 可用的模型 API Key（最少需要 `OPENAI_API_KEY`, `OPENAI_BASE_URL`）
 
 ## 快速开始
 
 1. 安装依赖
 
 ```bash
-python3 -m venv .venv
+uv venv
 source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 2. 配置环境变量
 
 ```bash
-cp .env.example .env.mb
+cp .env.example .env
 ```
 
 至少修改以下字段：
 
 - `OPENAI_API_KEY`
-- `CTV_MODEL_PROVIDER`
+- `OPENAI_BASE_URL`
 - `CTV_MODEL`
+- `CTV_MODEL_PROVIDER`（可选）
 
-说明：代码默认读取 `.env.mb`（见 `src/core/config.py`）。
 
 3. 启动聊天模式
 
 ```bash
-PYTHONPATH=src python3 -m cli.main chat
+ctvagent chat
 ```
 
 ## CLI 命令
@@ -62,7 +51,7 @@ PYTHONPATH=src python3 -m cli.main chat
 查看帮助：
 
 ```bash
-PYTHONPATH=src python3 -m cli.main --help
+ctvagent --help
 ```
 
 常用命令：
@@ -70,15 +59,21 @@ PYTHONPATH=src python3 -m cli.main --help
 - `chat`：进入交互式聊天模式
 - `sessions`：列出历史会话
 - `resume`：恢复会话继续聊天
-- `config-init`：交互式生成配置文件
 - `version`：查看版本
 
 示例：
 
 ```bash
-PYTHONPATH=src python3 -m cli.main sessions
-PYTHONPATH=src python3 -m cli.main resume --session-id <id_prefix>
-PYTHONPATH=src python3 -m cli.main chat --model qwen-plus --sandbox workspace_write
+ctvagent sessions
+ctvagent resume --session-id <id_prefix>
+ctvagent chat --model qwen-plus --sandbox workspace_write
+```
+
+如果你不想安装脚本入口，也可以直接使用 Python 脚本路径：
+
+```bash
+python3 src/cli/main.py chat
+python3 src/cli/main.py sessions
 ```
 
 ## 运行测试
@@ -98,7 +93,7 @@ pytest tests/core/ tests/tools/ -v
 主要配置在 `Config`（`src/core/config.py`）中，优先级如下：
 
 1. 代码传参
-2. `.env.mb`
+2. `.env`
 3. 系统环境变量
 4. 默认值
 
@@ -110,6 +105,20 @@ pytest tests/core/ tests/tools/ -v
 - `approval_policy`：`always | on_request | never`
 - `enable_memory`、`session_dir`
 - `enable_compaction`、`max_context_tokens`
+
+
+## 项目结构
+
+```text
+src/
+  cli/            # Typer CLI 入口
+  core/           # Engine / Session / Config / Memory / Hooks
+  tools/          # 工具实现与注册
+  prompt/         # 系统提示词与模板
+tests/            # 单元测试
+workspace/        # 默认工作目录
+```
+
 
 ## 核心组件
 
