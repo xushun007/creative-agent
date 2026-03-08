@@ -2,6 +2,8 @@
 
 最小可用的创造型 Coding Agent，聚焦 Tool 协作与可控执行。其设计和实现参考了主流Coding Agent（Codex，Claude Code，OpenCode，Gemini Cli）。
 
+<img src="docs/images/ctv-agent-start.png" alt="CTV Agent" width="80%">
+
 ## 特性
 
 - 基于 `CtvEngine` 的事件驱动执行流程
