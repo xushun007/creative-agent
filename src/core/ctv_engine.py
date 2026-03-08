@@ -1,4 +1,4 @@
-"""Codex核心引擎"""
+"""CTV核心引擎"""
 
 import asyncio
 from typing import Optional, AsyncIterator
@@ -10,8 +10,8 @@ from .protocol import Op, Event, Submission
 from utils.logger import logger
 
 
-class CodexEngine:
-    """Codex核心引擎"""
+class CtvEngine:
+    """CTV核心引擎"""
     
     def __init__(self, config: Config, memory_manager=None):
         self.config = config
@@ -20,7 +20,7 @@ class CodexEngine:
         self._memory_manager = memory_manager  # 保存恢复的 memory_manager
     
     async def start(self) -> Session:
-        """启动Codex引擎"""
+        """启动CTV引擎"""
         if self.session:
             await self.session.stop()
         
@@ -35,7 +35,7 @@ class CodexEngine:
         return self.session
     
     async def stop(self):
-        """停止Codex引擎"""
+        """停止CTV引擎"""
         self._running = False
         
         if self.session:

@@ -2,7 +2,7 @@
 
 from .protocol import *
 from .session import Session
-from .codex_engine import CodexEngine
+from .ctv_engine import CtvEngine
 from .model_client import ModelClient
 from .config import Config
 from .hooks import (
@@ -17,7 +17,7 @@ from .hooks import (
 __version__ = "0.1.0"
 __all__ = [
     "Session",
-    "CodexEngine", 
+    "CtvEngine",
     "ModelClient",
     "Config",
     "Op",

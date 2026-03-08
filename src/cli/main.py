@@ -13,14 +13,14 @@ from rich.layout import Layout
 from rich.markdown import Markdown
 from rich.prompt import Prompt, Confirm
 
-from core import Config, CodexEngine
+from core import Config, CtvEngine
 from core.protocol import Event, EventMsg
 from core.memory import MemoryManager
 
 
 # 全局变量
 console = Console()
-app = typer.Typer(name="codex", help="Codex - AI编程助手")
+app = typer.Typer(name="CTV-Agent", help="Creative Agent - AI编程助手")
 
 
 class CodexCLI:
@@ -28,7 +28,7 @@ class CodexCLI:
     
     def __init__(self, config: Config, memory_manager=None):
         self.config = config
-        self.engine: Optional[CodexEngine] = None
+        self.engine: Optional[CtvEngine] = None
         self.running = False
         self.pending_approvals = {}
         self._memory_manager = memory_manager  # 恢复的 memory_manager
@@ -37,7 +37,7 @@ class CodexCLI:
         """启动CLI"""
         try:
             # 启动引擎（传入恢复的 memory_manager）
-            self.engine = CodexEngine(self.config, memory_manager=self._memory_manager)
+            self.engine = CtvEngine(self.config, memory_manager=self._memory_manager)
             await self.engine.start()
             
             # 显示启动 UI（标记是否为恢复的会话）
@@ -80,13 +80,13 @@ class CodexCLI:
         else:
             memory_status = "[green]已启用[/green]" if getattr(self.config, 'enable_memory', True) else "[dim]已禁用[/dim]"
             console.print(Panel.fit(
-                f"[bold green]Codex Python 已启动[/bold green]\n"
+                f"[bold green]CTV Agent 已启动[/bold green]\n"
                 f"模型: {self.config.model}\n"
                 f"工作目录: {self.config.cwd}\n"
                 f"沙箱策略: {self.config.sandbox_policy}\n"
                 f"记忆系统: {memory_status}\n"
                 f"子代理: {'启用' if getattr(self.config, 'enable_subagent', True) else '禁用'}",
-                title="🤖 Codex"
+                title="CTV Agent"
             ))
 
     async def stop(self):

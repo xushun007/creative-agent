@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 基于 `CodexEngine` 的事件驱动执行流程
+- 基于 `CtvEngine` 的事件驱动执行流程
 - 内置多种工具（文件、命令、搜索、任务编排等）
 - 支持沙箱与命令审批策略
 - 支持会话持久化与恢复（memory/session）
@@ -122,7 +122,7 @@ workspace/        # 默认工作目录
 
 ## 核心组件
 
-- `CodexEngine`：任务生命周期与事件编排
+- `CtvEngine`：任务生命周期与事件编排
 - `Session`：消息历史、状态与上下文管理
 - `ModelClient`：模型调用与消息组织
 - `Tool Registry`：工具注册、调度与执行
