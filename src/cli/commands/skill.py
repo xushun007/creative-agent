@@ -20,20 +20,19 @@ from core.config import Config
 console = Console()
 
 
-def init_skill_registry(config: Config) -> SkillRegistry:
+async def init_skill_registry(config: Config) -> SkillRegistry:
     """初始化 Skill 注册表"""
     cwd = config.cwd
     registry = get_global_registry(cwd)
 
     # 加载内置 Skills
-    import asyncio
-    asyncio.run(load_builtin_bundled_skills(registry))
+    await load_builtin_bundled_skills(registry)
 
     # 加载动态注册的内置 Skills（主要用于测试/扩展）
     load_bundled_skills(registry)
 
     # 加载文件系统中的 Skills
-    asyncio.run(registry.load_from_filesystem())
+    await registry.load_from_filesystem()
 
     return registry
 

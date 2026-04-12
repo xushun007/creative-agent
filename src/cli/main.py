@@ -43,7 +43,7 @@ class CodexCLI:
         """启动CLI"""
         try:
             # 初始化 Skill 注册表
-            self._skill_registry = init_skill_registry(self.config)
+            self._skill_registry = await init_skill_registry(self.config)
 
             # 启动引擎（传入恢复的 memory_manager）
             self.engine = CtvEngine(self.config, memory_manager=self._memory_manager)
