@@ -41,6 +41,12 @@ class HookProvider:
     def on_task_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
         self._dispatch("on_task_complete", session_id, submission_id, payload or {})
 
+    def on_skill_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_skill_start", session_id, submission_id, payload or {})
+
+    def on_skill_complete(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
+        self._dispatch("on_skill_complete", session_id, submission_id, payload or {})
+
     def on_turn_start(self, session_id: str, submission_id: str, payload: Optional[dict] = None) -> None:
         self._dispatch("on_turn_start", session_id, submission_id, payload or {})
 

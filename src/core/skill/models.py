@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -36,6 +37,7 @@ class Skill:
     prompt_template: str
     base_dir: Optional[str] = None
     hooks: Optional[Dict[str, Any]] = None
+    file_path: Optional[Path] = None
 
     def render(self, arguments: str, context: Dict[str, Any]) -> str:
         """渲染提示词，替换参数变量"""
@@ -55,8 +57,9 @@ class Skill:
             for name, value in context["named_args"].items():
                 result = result.replace(f"${{{name}}}", value)
 
-        # 替换 ${CLAUDE_SKILL_DIR}
+        # 替换 Skill 目录变量（主名 + 兼容别名）
         if self.base_dir:
+            result = result.replace("${CTV_SKILL_DIR}", self.base_dir)
             result = result.replace("${CLAUDE_SKILL_DIR}", self.base_dir)
 
         # 替换 ${CLAUDE_SESSION_ID}

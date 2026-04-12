@@ -75,7 +75,7 @@ class TestLoadSkillsFromDir:
         skill2_dir.mkdir()
         (skill2_dir / "SKILL.md").write_text("---\ndescription: Skill Two\n---\nBody 2")
 
-        skills = await load_skills_from_dir(tmp_path, SkillSource.USER)
+        skills = await load_skills_from_dir(tmp_path, SkillSource.USER, lazy_body=False)
 
         assert len(skills) == 2
         ids = {s.info.id for s in skills}
@@ -87,7 +87,7 @@ class TestLoadSkillsFromDir:
         # 创建文件而非目录
         (tmp_path / "file.md").write_text("content")
 
-        skills = await load_skills_from_dir(tmp_path, SkillSource.PROJECT)
+        skills = await load_skills_from_dir(tmp_path, SkillSource.PROJECT, lazy_body=False)
         assert skills == []
 
     @pytest.mark.asyncio
@@ -97,8 +97,21 @@ class TestLoadSkillsFromDir:
         # 只有 README，没有 SKILL.md
         (skill_dir / "README.md").write_text("readme")
 
-        skills = await load_skills_from_dir(tmp_path, SkillSource.PROJECT)
+        skills = await load_skills_from_dir(tmp_path, SkillSource.PROJECT, lazy_body=False)
         assert skills == []
+
+    @pytest.mark.asyncio
+    async def test_load_dir_lazy_body(self, tmp_path):
+        skill_dir = tmp_path / "lazy-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\ndescription: Lazy Skill\n---\nLazy Body")
+
+        skills = await load_skills_from_dir(tmp_path, SkillSource.PROJECT, lazy_body=True)
+
+        assert len(skills) == 1
+        skill = skills[0]
+        assert skill.prompt_template == ""
+        assert skill.file_path == skill_dir / "SKILL.md"
 
 
 class TestGetSkillsBaseDirs:
@@ -138,6 +151,9 @@ class TestBundledSkillsDir:
         assert bundled_dir.name == "bundled"
         assert bundled_dir.exists()
         assert (bundled_dir / "verify" / "SKILL.md").exists()
+        assert (bundled_dir / "verify" / "examples" / "checklist.md").exists()
+        assert (bundled_dir / "review" / "examples" / "findings-format.md").exists()
+        assert (bundled_dir / "simplify" / "examples" / "safety-rules.md").exists()
 
 
 class TestLoadAllSkills:

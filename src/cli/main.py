@@ -310,15 +310,25 @@ class CodexCLI:
 
                 # 检查是否为 Skill 命令
                 if is_skill_command(user_input):
-                    skill_prompt = handle_skill_command(
+                    skill_result = handle_skill_command(
                         self._skill_registry,
                         user_input,
                         {"session_id": self.engine.session.session_id if self.engine and self.engine.session else "unknown"}
                     )
-                    if skill_prompt:
-                        # 将 Skill 提示词作为用户输入提交
+                    if skill_result:
+                        # 将 Skill 提示词作为用户输入提交，并附带 skill 元数据
                         if self.engine:
-                            await self.engine.submit_user_input(skill_prompt)
+                            await self.engine.submit_user_input(
+                                skill_result["prompt"],
+                                metadata={
+                                    "skill": {
+                                        "id": skill_result["skill_id"],
+                                        "allowed_tools": skill_result["allowed_tools"],
+                                        "base_dir": skill_result["base_dir"],
+                                        "hooks": skill_result["hooks"],
+                                    }
+                                },
+                            )
                     continue
 
                 # 提交用户输入

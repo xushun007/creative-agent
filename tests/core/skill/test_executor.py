@@ -73,6 +73,22 @@ class TestSkillExecutor:
             skill_id="test",
             name="Test",
             description="Test",
+            prompt_template="Skill dir: ${CTV_SKILL_DIR}",
+            base_dir="/test/dir"
+        )
+        load_bundled_skills(registry)
+
+        executor = SkillExecutor(registry)
+        result = executor.render("test", "", {})
+
+        assert result == "Skill dir: /test/dir"
+
+    def test_render_with_legacy_skill_dir_alias(self):
+        registry = SkillRegistry()
+        register_bundled_skill(
+            skill_id="test",
+            name="Test",
+            description="Test",
             prompt_template="Skill dir: ${CLAUDE_SKILL_DIR}",
             base_dir="/test/dir"
         )
@@ -108,6 +124,7 @@ class TestSkillExecutor:
         assert result["skill_id"] == "test"
         assert "Prompt: args" in result["prompt"]
         assert "bash" in result["allowed_tools"]
+        assert result["hooks"] is None
 
     def test_execute_nonexistent_skill(self):
         registry = SkillRegistry()
@@ -117,6 +134,32 @@ class TestSkillExecutor:
 
         assert result["success"] is False
         assert "not found" in result["error"]
+
+    def test_execute_lazy_loaded_skill(self, tmp_path):
+        skill_dir = tmp_path / "lazy-skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text("---\ndescription: Lazy\n---\nPrompt: ${ARGUMENTS}")
+
+        registry = SkillRegistry()
+        registry.register(Skill(
+            info=SkillInfo(
+                id="lazy-skill",
+                name="Lazy Skill",
+                description="Lazy",
+                source=SkillSource.PROJECT,
+            ),
+            prompt_template="",
+            base_dir=str(skill_dir),
+            file_path=skill_file,
+        ))
+
+        executor = SkillExecutor(registry)
+        result = executor.execute("lazy-skill", "args", {})
+
+        assert result["success"] is True
+        assert result["prompt"] == "Prompt: args"
+        assert registry.get("lazy-skill").prompt_template == "Prompt: ${ARGUMENTS}"
 
 
 class TestConditionalSkills:

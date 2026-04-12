@@ -76,18 +76,18 @@ def execute_skill(
     skill_id: str,
     arguments: str,
     context: dict
-) -> Optional[str]:
+) -> Optional[dict]:
     """
     执行 Skill
 
     Returns:
-        渲染后的提示词，或 None（如果 Skill 不存在）
+        执行结果字典，或 None（如果 Skill 不存在）
     """
     executor = SkillExecutor(registry)
     result = executor.execute(skill_id, arguments, context)
 
     if result["success"]:
-        return result["prompt"]
+        return result
 
     return None
 
@@ -146,7 +146,7 @@ def handle_skill_command(
     registry: SkillRegistry,
     input_str: str,
     context: dict
-) -> Optional[str]:
+) -> Optional[dict]:
     """
     处理技能命令
 
@@ -168,10 +168,10 @@ def handle_skill_command(
         return None
 
     # 执行 Skill
-    prompt = execute_skill(registry, skill_id, arguments, context)
-    if prompt:
+    result = execute_skill(registry, skill_id, arguments, context)
+    if result:
         console.print(f"[green]Executing /{skill_id}...[/green]\n")
-        return prompt
+        return result
 
     # Skill 不存在
     console.print(f"[red]Skill not found: {skill_id}[/red]")

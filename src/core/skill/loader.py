@@ -11,7 +11,8 @@ from .parser import parse_skill_content
 async def load_skill_from_file(
     file_path: Path,
     source: SkillSource,
-    base_dir: Optional[str] = None
+    base_dir: Optional[str] = None,
+    lazy_body: bool = False,
 ) -> Optional[Skill]:
     """
     从文件加载 Skill
@@ -36,13 +37,15 @@ async def load_skill_from_file(
         content=content,
         skill_id=skill_id,
         source=source,
-        base_dir=base_dir or str(file_path.parent)
+        base_dir=base_dir or str(file_path.parent),
+        include_body=not lazy_body,
     )
 
 
 async def load_skills_from_dir(
     dir_path: Path,
-    source: SkillSource
+    source: SkillSource,
+    lazy_body: bool = True,
 ) -> List[Skill]:
     """
     从目录加载 Skills
@@ -77,9 +80,12 @@ async def load_skills_from_dir(
         skill = await load_skill_from_file(
             skill_file,
             source,
-            base_dir=str(entry)
+            base_dir=str(entry),
+            lazy_body=lazy_body,
         )
         if skill:
+            if lazy_body:
+                skill.file_path = skill_file
             skills.append(skill)
 
     return skills

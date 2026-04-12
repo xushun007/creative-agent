@@ -4,6 +4,7 @@ import pytest
 from core.skill.parser import (
     parse_frontmatter,
     parse_bool,
+    parse_hooks,
     parse_list,
     parse_argument_names,
     parse_skill_content,
@@ -106,6 +107,19 @@ class TestParseList:
         assert result == ['a', 'b']
 
 
+class TestParseHooks:
+    """测试 hooks 解析"""
+
+    def test_parse_hooks_json(self):
+        hooks = parse_hooks('{"on_skill_start":["echo start"],"on_skill_complete":["echo done"]}')
+        assert hooks is not None
+        assert hooks["on_skill_start"] == ["echo start"]
+        assert hooks["on_skill_complete"] == ["echo done"]
+
+    def test_parse_hooks_invalid(self):
+        assert parse_hooks("not-json") is None
+
+
 class TestParseSkillContent:
     """测试 Skill 内容解析"""
 
@@ -149,6 +163,22 @@ Body content"""
 
         assert skill.info.description == 'My Skill Header'
 
+    def test_parse_hooks_from_frontmatter(self):
+        content = """---
+description: Hook skill
+hooks: '{"on_skill_start":["echo start"]}'
+---
+Body"""
+
+        skill = parse_skill_content(
+            content,
+            'hook-skill',
+            SkillSource.PROJECT
+        )
+
+        assert skill.hooks is not None
+        assert skill.hooks["on_skill_start"] == ["echo start"]
+
 
 class TestExtractArgumentNames:
     """测试参数名提取"""
@@ -161,9 +191,10 @@ class TestExtractArgumentNames:
         assert 'COUNT' in names
 
     def test_extract_builtins_excluded(self):
-        prompt = "${ARGUMENTS} ${CLAUDE_SKILL_DIR} ${custom}"
+        prompt = "${ARGUMENTS} ${CTV_SKILL_DIR} ${CLAUDE_SKILL_DIR} ${custom}"
         from core.skill.parser import extract_argument_names
         names = extract_argument_names(prompt)
         assert 'custom' in names
         assert 'ARGUMENTS' not in names
+        assert 'CTV_SKILL_DIR' not in names
         assert 'CLAUDE_SKILL_DIR' not in names

@@ -8,6 +8,15 @@ user-invocable: true
 
 你正在执行代码审查任务。
 
+Base directory for this skill: ${CTV_SKILL_DIR}
+
+## 参考资源
+
+按需读取以下文件，不要全部展开：
+
+- `${CTV_SKILL_DIR}/examples/findings-format.md`
+- `${CTV_SKILL_DIR}/examples/review-rubric.md`
+
 ## 审查要点
 
 请从以下角度审查代码：
@@ -39,4 +48,4 @@ user-invocable: true
 
 ${ARGUMENTS}
 
-请提供具体的改进建议。
+请优先输出具体问题，其次再给建议。没有明显问题时，也要说明残余风险和测试缺口。

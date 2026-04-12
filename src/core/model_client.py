@@ -91,12 +91,18 @@ class ModelClient:
             pass
         self.conversation_history.append(Message("system", content))
     
-    def add_user_message(self, content: str):
+    def add_user_message(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """添加用户消息"""
         if self.memory_manager:
-            self.memory_manager.add_user_message(content)
+            self.memory_manager.add_user_message(content, metadata=metadata)
         else:
-            self.conversation_history.append(Message("user", content))
+            self.conversation_history.append(
+                Message("user", content, metadata=metadata or {})
+            )
     
     def add_assistant_message(self, content: str, tool_calls: Optional[List[Dict[str, Any]]] = None):
         """添加助手消息"""
@@ -189,9 +195,10 @@ class ModelClient:
     
     def get_tools_schema(self) -> List[Dict[str, Any]]:
         """获取工具模式定义 - 从工具注册系统动态获取"""
-        from tools.registry import get_global_registry
-        
-        registry = get_global_registry()
+        registry = self.tool_registry
+        if registry is None:
+            from tools.registry import get_global_registry
+            registry = get_global_registry()
         tools_dict = registry.get_tools_dict(enabled_only=True)
         
         # 转换为OpenAI API需要的格式

@@ -44,14 +44,21 @@ class Op:
     model: Optional[str] = None
     id: Optional[str] = None
     decision: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @classmethod
-    def user_input(cls, text: str, cwd: Path = None) -> "Op":
+    def user_input(
+        cls,
+        text: str,
+        cwd: Path = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "Op":
         """创建用户输入操作"""
         return cls(
             type="user_input",
             items=[InputItem(type="text", text=text)],
-            cwd=cwd or Path.cwd()
+            cwd=cwd or Path.cwd(),
+            metadata=metadata,
         )
     
     @classmethod

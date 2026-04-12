@@ -187,6 +187,9 @@ class TestBuiltinBundledSkills:
         assert verify is not None
         assert verify.info.source == SkillSource.BUNDLED
         assert "验证代码变更" in verify.info.description
+        assert verify.base_dir is not None
+        assert verify.prompt_template == ""
+        assert verify.file_path is not None
 
 
 class TestGlobalRegistry:

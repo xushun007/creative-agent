@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import fnmatch
 
 from .models import Skill, SkillSource
+from .parser import parse_skill_content
 from .registry import SkillRegistry
 
 
@@ -41,6 +42,8 @@ class SkillExecutor:
         if not skill:
             return None
 
+        self._ensure_skill_loaded(skill)
+
         return skill.render(arguments, context)
 
     def execute(
@@ -67,6 +70,8 @@ class SkillExecutor:
                 "error": f"Skill not found: {skill_id}"
             }
 
+        self._ensure_skill_loaded(skill)
+
         # 渲染提示词
         prompt = skill.render(arguments, context)
 
@@ -78,9 +83,26 @@ class SkillExecutor:
             "prompt": prompt,
             "allowed_tools": skill.info.allowed_tools,
             "base_dir": skill.base_dir,
+            "hooks": skill.hooks,
         }
 
         return result
+
+    def _ensure_skill_loaded(self, skill: Skill) -> None:
+        """按需从文件加载 Skill 正文"""
+        if skill.prompt_template or not skill.file_path:
+            return
+
+        content = skill.file_path.read_text(encoding='utf-8')
+        loaded = parse_skill_content(
+            content=content,
+            skill_id=skill.info.id,
+            source=skill.info.source,
+            base_dir=skill.base_dir,
+            include_body=True,
+        )
+        skill.prompt_template = loaded.prompt_template
+        skill.hooks = loaded.hooks
 
     def check_conditional_activation(
         self,

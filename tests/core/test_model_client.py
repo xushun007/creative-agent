@@ -172,6 +172,15 @@ class TestModelClient(unittest.TestCase):
         last_msg = client.conversation_history[-1]
         self.assertEqual(last_msg.role, "user")
         self.assertEqual(last_msg.content, "用户问题")
+
+    def test_add_user_message_with_metadata(self):
+        """测试添加带元数据的用户消息"""
+        client = ModelClient(self.config)
+
+        client.add_user_message("用户问题", metadata={"skill": {"id": "verify"}})
+
+        last_msg = client.conversation_history[-1]
+        self.assertEqual(last_msg.metadata["skill"]["id"], "verify")
     
     def test_add_assistant_message(self):
         """测试添加助手消息"""
@@ -227,6 +236,20 @@ class TestModelClient(unittest.TestCase):
         self.assertIn("name", tool["function"])
         self.assertIn("description", tool["function"])
         self.assertIn("parameters", tool["function"])
+
+    def test_get_tools_schema_uses_client_registry(self):
+        """测试工具 schema 使用当前客户端注册表，而不是全局注册表"""
+        restricted_registry = ToolRegistry()
+        restricted_registry._tools.clear()
+        restricted_registry._instances.clear()
+        restricted_registry.register_tool(MockTool)
+
+        client = ModelClient(self.config, restricted_registry)
+
+        tools_schema = client.get_tools_schema()
+        tool_names = [tool["function"]["name"] for tool in tools_schema]
+
+        self.assertEqual(tool_names, ["mock_tool"])
     
     def test_setup_system_messages_with_tool_registry(self):
         """测试带工具注册表的系统消息设置"""

@@ -8,9 +8,18 @@ user-invocable: true
 
 你正在执行代码简化任务。
 
+Base directory for this skill: ${CTV_SKILL_DIR}
+
 ## 任务目标
 
 审查已修改的代码，识别可重用的模式，改进代码质量。
+
+## 参考资源
+
+按需读取以下文件，不要全部展开：
+
+- `${CTV_SKILL_DIR}/examples/refactor-patterns.md`
+- `${CTV_SKILL_DIR}/examples/safety-rules.md`
 
 ## 检查清单
 
@@ -37,4 +46,4 @@ user-invocable: true
 
 ${ARGUMENTS}
 
-请执行简化并报告改动。
+先做低风险简化；如果需要跨模块重构，先说明理由和验证方式，再实施。

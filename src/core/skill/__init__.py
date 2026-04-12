@@ -32,6 +32,7 @@ from .parser import (
     parse_frontmatter,
     parse_skill_content,
     parse_bool,
+    parse_hooks,
     parse_list,
 )
 from .registry import (
@@ -68,6 +69,7 @@ __all__ = [
     "parse_skill_content",
     "parse_bool",
     "parse_list",
+    "parse_hooks",
     "parse_argument_names",
     "extract_argument_names",
     # 执行器

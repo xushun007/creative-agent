@@ -1,7 +1,8 @@
 """Skill 解析器 - 解析 Frontmatter 和 Skill 内容"""
 
+import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import Skill, SkillInfo, SkillSource
 
@@ -82,11 +83,37 @@ def parse_argument_names(value: Optional[str]) -> List[str]:
     return parse_list(value)
 
 
+def parse_hooks(value: Optional[str]) -> Optional[Dict[str, List[str]]]:
+    """解析 hooks 配置，当前支持 JSON 字符串"""
+    if not value:
+        return None
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+
+    hooks: Dict[str, List[str]] = {}
+    for key, commands in parsed.items():
+        if isinstance(commands, str):
+            hooks[str(key)] = [commands]
+        elif isinstance(commands, list):
+            hook_commands = [str(cmd) for cmd in commands if str(cmd).strip()]
+            if hook_commands:
+                hooks[str(key)] = hook_commands
+
+    return hooks or None
+
+
 def parse_skill_content(
     content: str,
     skill_id: str,
     source: SkillSource,
-    base_dir: Optional[str] = None
+    base_dir: Optional[str] = None,
+    include_body: bool = True,
 ) -> Skill:
     """
     解析 Skill 文件内容
@@ -132,8 +159,9 @@ def parse_skill_content(
 
     return Skill(
         info=info,
-        prompt_template=body,
+        prompt_template=body if include_body else "",
         base_dir=base_dir,
+        hooks=parse_hooks(frontmatter.get('hooks')),
     )
 
 
@@ -144,5 +172,5 @@ def extract_argument_names(prompt: str) -> List[str]:
     matches = re.findall(pattern, prompt)
 
     # 排除内置变量
-    builtins = {'ARGUMENTS', 'CLAUDE_SKILL_DIR', 'CLAUDE_SESSION_ID'}
+    builtins = {'ARGUMENTS', 'CTV_SKILL_DIR', 'CLAUDE_SKILL_DIR', 'CLAUDE_SESSION_ID'}
     return [m for m in matches if m not in builtins]
