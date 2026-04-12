@@ -13,7 +13,7 @@ from rich.layout import Layout
 from rich.markdown import Markdown
 from rich.prompt import Prompt, Confirm
 
-from core import Config, CtvEngine
+from core import Config, CodexEngine
 from core.protocol import Event, EventMsg
 from core.memory import MemoryManager
 
@@ -24,11 +24,11 @@ app = typer.Typer(name="CTV-Agent", help="Creative Agent - AI编程助手")
 
 
 class CodexCLI:
-    """Codex CLI控制器"""
+    """CTV Agent CLI控制器"""
     
     def __init__(self, config: Config, memory_manager=None):
         self.config = config
-        self.engine: Optional[CtvEngine] = None
+        self.engine: Optional[CodexEngine] = None
         self.running = False
         self.pending_approvals = {}
         self._memory_manager = memory_manager  # 恢复的 memory_manager
@@ -37,7 +37,7 @@ class CodexCLI:
         """启动CLI"""
         try:
             # 启动引擎（传入恢复的 memory_manager）
-            self.engine = CtvEngine(self.config, memory_manager=self._memory_manager)
+            self.engine = CodexEngine(self.config, memory_manager=self._memory_manager)
             await self.engine.start()
             
             # 显示启动 UI（标记是否为恢复的会话）
@@ -75,7 +75,7 @@ class CodexCLI:
                 f"模型: {self.config.model}\n"
                 f"工作目录: {self.config.cwd}\n"
                 f"记忆系统: [green]已启用[/green]",
-                title="🔄 Codex Resume"
+                title="🔄 CTV Agent Resume"
             ))
         else:
             memory_status = "[green]已启用[/green]" if getattr(self.config, 'enable_memory', True) else "[dim]已禁用[/dim]"
@@ -94,7 +94,7 @@ class CodexCLI:
         self.running = False
         if self.engine:
             await self.engine.stop()
-        console.print("[green]Codex已关闭[/green]")
+        console.print("[green]CTV Agent已关闭[/green]")
     
     async def _handle_events(self):
         """处理事件流"""
@@ -129,7 +129,7 @@ class CodexCLI:
             if message:
                 console.print(Panel(
                     Markdown(message),
-                    title="🤖 Codex",
+                    title="CTV-Agent",
                     border_style="blue"
                 ))
         
@@ -315,7 +315,7 @@ class CodexCLI:
     def _show_help(self):
         """显示帮助信息"""
         help_text = """
-[bold cyan]Codex Python 帮助[/bold cyan]
+[bold cyan]CTV Agent 帮助[/bold cyan]
 
 [bold]基本命令:[/bold]
 - help, h        显示此帮助信息
@@ -379,7 +379,7 @@ def chat(
     approval: Optional[str] = typer.Option("on_request", "--approval", "-a", help="批准策略"),
     resume_session: Optional[str] = typer.Option(None, "--resume", "-r", help="恢复指定会话ID"),
 ):
-    """启动Codex聊天模式"""
+    """启动CTV Agent聊天模式"""
     
     # 恢复会话逻辑
     memory_manager = None
@@ -406,7 +406,7 @@ def chat(
         
         if not rollout_path:
             console.print(f"[red]未找到会话 ID: {resume_session}[/red]")
-            console.print(f"[dim]使用 'codex sessions' 查看所有会话[/dim]")
+            console.print(f"[dim]使用 'ctv agent sessions' 查看所有会话[/dim]")
             return
         
         # 显示会话信息
@@ -521,7 +521,7 @@ def sessions(
         if len(all_sessions) > limit:
             console.print(f"[dim]使用 --limit 选项查看更多会话[/dim]")
         
-        console.print(f"\n[bold]恢复会话:[/bold] codex resume --session-id <session_id>")
+        console.print(f"\n[bold]恢复会话:[/bold] ctvagent resume --session-id <session_id>")
         
     except Exception as e:
         console.print(f"[red]列出会话失败: {e}[/red]")
@@ -565,7 +565,7 @@ def resume(
             
             if not rollout_path:
                 console.print(f"[red]未找到会话 ID: {session_id}[/red]")
-                console.print(f"[dim]使用 'codex sessions' 查看所有会话[/dim]")
+                console.print(f"[dim]使用 'ctvagent sessions' 查看所有会话[/dim]")
                 return
         else:
             # 选择最近的会话
@@ -633,7 +633,7 @@ def config_init(
     config = Config()
     
     # 交互式配置
-    console.print("[bold cyan]Codex配置初始化[/bold cyan]")
+    console.print("[bold cyan]CTV Agent配置初始化[/bold cyan]")
     
     api_key = Prompt.ask("OpenAI API Key", default=config.api_key or "")
     if api_key:
@@ -666,7 +666,7 @@ def config_init(
 def version():
     """显示版本信息"""
     __version__ = "0.1.0"
-    console.print(f"Codex Python v{__version__}")
+    console.print(f"CTV Agent Python v{__version__}")
 
 
 def main():
