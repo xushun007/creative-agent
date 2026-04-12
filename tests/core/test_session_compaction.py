@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from core.session import Session
 from core.config import Config
+from core.path_guard import policy_from_context, check_path_access
+from tools.base_tool import ToolContext
 
 
 class TestSessionCompaction:
@@ -324,3 +326,25 @@ class TestSessionSkillContext:
 
         commands = [call.args[0] for call in run_mock.call_args_list]
         assert commands == ["echo start", "echo complete"]
+
+    def test_skill_base_dir_is_readable_but_not_writable(self, config, tmp_path):
+        session = Session(config)
+        skill_dir = tmp_path / "skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "example.txt"
+
+        extra = session._build_tool_context_extra({"base_dir": str(skill_dir)})
+        context = ToolContext(
+            session_id="s1",
+            message_id="m1",
+            agent="test",
+            extra={"config": config, **extra},
+        )
+
+        policy = policy_from_context(context)
+
+        can_read, _ = check_path_access(policy, skill_file, "read")
+        can_write, _ = check_path_access(policy, skill_file, "write")
+
+        assert can_read is True
+        assert can_write is False

@@ -1,20 +1,7 @@
-"""内置 Skills 注册入口"""
+"""Bundled skills package.
 
-from .review import register_review_skill
-from .simplify import register_simplify_skill
-from .verify import register_verify_skill
+默认 bundled skills 现在统一走文件驱动目录：
+    src/skills/bundled/<skill-id>/SKILL.md
+"""
 
-
-def register_all_bundled_skills():
-    """注册所有内置 Skills"""
-    register_verify_skill()
-    register_review_skill()
-    register_simplify_skill()
-
-
-__all__ = [
-    "register_all_bundled_skills",
-    "register_verify_skill",
-    "register_review_skill",
-    "register_simplify_skill",
-]
+__all__ = []

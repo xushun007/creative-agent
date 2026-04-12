@@ -250,6 +250,20 @@ class TestModelClient(unittest.TestCase):
         tool_names = [tool["function"]["name"] for tool in tools_schema]
 
         self.assertEqual(tool_names, ["mock_tool"])
+
+    def test_runtime_tool_constraint_message_uses_client_registry(self):
+        """测试运行时工具约束消息与当前注册表一致"""
+        restricted_registry = ToolRegistry()
+        restricted_registry._tools.clear()
+        restricted_registry._instances.clear()
+        restricted_registry.register_tool(MockTool)
+
+        client = ModelClient(self.config, restricted_registry)
+
+        message = client._build_runtime_tool_constraint_message()
+
+        self.assertIn("mock_tool", message)
+        self.assertNotIn("bash", message)
     
     def test_setup_system_messages_with_tool_registry(self):
         """测试带工具注册表的系统消息设置"""

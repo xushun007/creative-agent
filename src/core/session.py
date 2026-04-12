@@ -219,6 +219,21 @@ class Session:
                     },
                 )
     
+    def _build_tool_context_extra(
+        self,
+        skill_context: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建当前回合的工具上下文附加信息"""
+        extra: Dict[str, Any] = {}
+        if not skill_context:
+            return extra
+
+        base_dir = skill_context.get("base_dir")
+        if base_dir:
+            extra["extra_read_roots"] = [str(base_dir)]
+
+        return extra
+
     
     async def start(self):
         """启动会话"""
@@ -362,6 +377,7 @@ class Session:
             session_id=self.session_id,
             hook_provider=self.hook_provider,
             abort_event=self._current_abort_event,
+            tool_context_extra=self._build_tool_context_extra(skill_context),
         )
 
         original_tool_registry = self.model_client.tool_registry
