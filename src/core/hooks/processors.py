@@ -44,6 +44,12 @@ class LoggerHooks(HooksBase):
     def on_task_complete(self, context: HookContext) -> None:
         self._log(context)
 
+    def on_skill_start(self, context: HookContext) -> None:
+        self._log(context)
+
+    def on_skill_complete(self, context: HookContext) -> None:
+        self._log(context)
+
     def on_turn_start(self, context: HookContext) -> None:
         self._log(context)
 

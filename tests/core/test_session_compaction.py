@@ -1,13 +1,17 @@
 """Session 压缩集成测试"""
 
 import sys
+import subprocess
 from pathlib import Path
 import pytest
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from core.session import Session
 from core.config import Config
+from core.path_guard import policy_from_context, check_path_access
+from tools.base_tool import ToolContext
 
 
 class TestSessionCompaction:
@@ -177,3 +181,170 @@ class TestCompactionIntegration:
         # 默认应该禁用压缩
         assert config.enable_compaction is False
         assert config.max_context_tokens == 128000
+
+
+class TestSessionSkillContext:
+    """测试 Session 中 skill 工具约束"""
+
+    @pytest.fixture
+    def config(self, tmp_path):
+        return Config(
+            model="gpt-4",
+            api_key="test-key",
+            cwd=Path.cwd(),
+            enable_memory=False,
+            auto_load_project_docs=False,
+            session_dir=tmp_path / "sessions",
+        )
+
+    @pytest.mark.asyncio
+    async def test_skill_context_restricts_model_tools(self, config):
+        session = Session(config)
+
+        captured_registries = []
+
+        async def fake_execute_turn(_submission_id):
+            captured_registries.append(session.model_client.tool_registry)
+
+            class Result:
+                text_content = "done"
+                token_usage = None
+                finish_reason = "stop"
+                tool_calls = []
+
+                def has_tool_calls(self):
+                    return False
+
+            return Result()
+
+        submission = type(
+            "SubmissionStub",
+            (),
+            {
+                "id": "sub-1",
+                "op": type(
+                    "OpStub",
+                    (),
+                    {
+                        "items": [type("ItemStub", (), {"text": "skill prompt"})()],
+                        "metadata": {"skill": {"id": "review", "allowed_tools": ["read", "grep"]}},
+                    },
+                )(),
+            },
+        )()
+
+        with patch("core.agent_turn.AgentTurn.execute_turn", new=AsyncMock(side_effect=fake_execute_turn)):
+            await session._handle_user_input(submission)
+
+        assert len(captured_registries) == 1
+        tool_names = captured_registries[0].get_tool_ids(enabled_only=True)
+        assert sorted(tool_names) == ["grep", "read"]
+
+    @pytest.mark.asyncio
+    async def test_skill_context_preserves_original_registry_after_turn(self, config):
+        session = Session(config)
+        original_registry = session.model_client.tool_registry
+
+        async def fake_execute_turn(_submission_id):
+            class Result:
+                text_content = "done"
+                token_usage = None
+                finish_reason = "stop"
+                tool_calls = []
+
+                def has_tool_calls(self):
+                    return False
+
+            return Result()
+
+        submission = type(
+            "SubmissionStub",
+            (),
+            {
+                "id": "sub-2",
+                "op": type(
+                    "OpStub",
+                    (),
+                    {
+                        "items": [type("ItemStub", (), {"text": "skill prompt"})()],
+                        "metadata": {"skill": {"id": "verify", "allowed_tools": ["bash"]}},
+                    },
+                )(),
+            },
+        )()
+
+        with patch("core.agent_turn.AgentTurn.execute_turn", new=AsyncMock(side_effect=fake_execute_turn)):
+            await session._handle_user_input(submission)
+
+        assert session.model_client.tool_registry is original_registry
+
+    @pytest.mark.asyncio
+    async def test_skill_hooks_are_executed(self, config):
+        session = Session(config)
+
+        async def fake_execute_turn(_submission_id):
+            class Result:
+                text_content = "done"
+                token_usage = None
+                finish_reason = "stop"
+                tool_calls = []
+
+                def has_tool_calls(self):
+                    return False
+
+            return Result()
+
+        submission = type(
+            "SubmissionStub",
+            (),
+            {
+                "id": "sub-3",
+                "op": type(
+                    "OpStub",
+                    (),
+                    {
+                        "items": [type("ItemStub", (), {"text": "skill prompt"})()],
+                        "metadata": {
+                            "skill": {
+                                "id": "verify",
+                                "allowed_tools": ["bash"],
+                                "hooks": {
+                                    "on_skill_start": ["echo start"],
+                                    "on_skill_complete": ["echo complete"],
+                                },
+                            }
+                        },
+                    },
+                )(),
+            },
+        )()
+
+        completed = subprocess.CompletedProcess(args="echo", returncode=0, stdout="", stderr="")
+        with patch("core.agent_turn.AgentTurn.execute_turn", new=AsyncMock(side_effect=fake_execute_turn)):
+            with patch("core.session.subprocess.run", return_value=completed) as run_mock:
+                await session._handle_user_input(submission)
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        assert commands == ["echo start", "echo complete"]
+
+    def test_skill_base_dir_is_readable_but_not_writable(self, config, tmp_path):
+        session = Session(config)
+        skill_dir = tmp_path / "skill"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "example.txt"
+
+        extra = session._build_tool_context_extra({"base_dir": str(skill_dir)})
+        context = ToolContext(
+            session_id="s1",
+            message_id="m1",
+            agent="test",
+            extra={"config": config, **extra},
+        )
+
+        policy = policy_from_context(context)
+
+        can_read, _ = check_path_access(policy, skill_file, "read")
+        can_write, _ = check_path_access(policy, skill_file, "write")
+
+        assert can_read is True
+        assert can_write is False

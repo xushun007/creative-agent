@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import subprocess
 from typing import Optional, Dict, Any
 import uuid
 
@@ -149,7 +150,90 @@ class Session:
             self.compaction_manager = CompactionManager()
             self.compaction_manager.register_strategy("opencode", OpenCodeStrategy(strategy_config))
             self.compaction_manager.set_strategy("opencode")
+
+    def _resolve_skill_registry(
+        self,
+        skill_context: Optional[Dict[str, Any]],
+    ):
+        """根据 skill 上下文解析本轮使用的工具注册表"""
+        if not skill_context:
+            return self.tool_registry
+
+        allowed_tools = skill_context.get("allowed_tools") or []
+        if not allowed_tools:
+            return self.tool_registry
+
+        return self.tool_registry.clone_with_allowed_tools(allowed_tools)
+
+    def _run_skill_hook_commands(
+        self,
+        stage: str,
+        skill_context: Optional[Dict[str, Any]],
+        submission_id: str,
+    ) -> None:
+        """执行 skill 声明的 hook 命令"""
+        if not skill_context:
+            return
+
+        hooks = skill_context.get("hooks") or {}
+        commands = hooks.get(stage) or []
+        if not commands:
+            return
+
+        base_dir = skill_context.get("base_dir")
+        cwd = Path(base_dir) if base_dir else self.config.cwd
+
+        for command in commands:
+            try:
+                completed = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    self.hook_provider.on_error(
+                        self.session_id,
+                        submission_id,
+                        {
+                            "message": "skill_hook_failed",
+                            "skill_id": skill_context.get("id"),
+                            "stage": stage,
+                            "command": command,
+                            "returncode": completed.returncode,
+                            "stderr": completed.stderr.strip(),
+                        },
+                    )
+            except Exception as exc:
+                self.hook_provider.on_error(
+                    self.session_id,
+                    submission_id,
+                    {
+                        "message": "skill_hook_exception",
+                        "skill_id": skill_context.get("id"),
+                        "stage": stage,
+                        "command": command,
+                        "error": str(exc),
+                    },
+                )
     
+    def _build_tool_context_extra(
+        self,
+        skill_context: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建当前回合的工具上下文附加信息"""
+        extra: Dict[str, Any] = {}
+        if not skill_context:
+            return extra
+
+        base_dir = skill_context.get("base_dir")
+        if base_dir:
+            extra["extra_read_roots"] = [str(base_dir)]
+
+        return extra
+
     
     async def start(self):
         """启动会话"""
@@ -259,15 +343,24 @@ class Session:
     async def _handle_user_input(self, submission: Submission):
         """处理用户输入 - 使用AgentTurn实现ReAct循环"""
         op = submission.op
+        skill_context = (op.metadata or {}).get("skill")
+        active_tool_registry = self._resolve_skill_registry(skill_context)
         
         # 发送任务开始事件
         await self.event_handler.emit_task_started(submission.id)
         self.hook_provider.on_task_start(self.session_id, submission.id, {})
+        if skill_context:
+            self.hook_provider.on_skill_start(
+                self.session_id,
+                submission.id,
+                {"skill": skill_context},
+            )
+            self._run_skill_hook_commands("on_skill_start", skill_context, submission.id)
         
         # 添加用户消息到对话历史
         if op.items:
             user_text = " ".join(item.text for item in op.items if item.text)
-            self.model_client.add_user_message(user_text)
+            self.model_client.add_user_message(user_text, metadata=op.metadata)
             
             # 发送用户消息事件
             await self.event_handler.emit_user_message(submission.id, user_text)
@@ -279,12 +372,16 @@ class Session:
         from .agent_turn import AgentTurn
         agent_turn = AgentTurn(
             model_client=self.model_client,
-            tool_registry=self.tool_registry,
+            tool_registry=active_tool_registry,
             event_handler=self.event_handler,
             session_id=self.session_id,
             hook_provider=self.hook_provider,
             abort_event=self._current_abort_event,
+            tool_context_extra=self._build_tool_context_extra(skill_context),
         )
+
+        original_tool_registry = self.model_client.tool_registry
+        self.model_client.tool_registry = active_tool_registry
         
         # ReAct 循环：持续对话直到任务完成
         max_turns = self.config.max_turns  # 防止无限循环
@@ -292,33 +389,36 @@ class Session:
         turns_executed = 0
         last_agent_message = None
         
-        while turn_count < max_turns:
-            try:
-                # 执行一个AgentTurn
-                turn_result = await agent_turn.execute_turn(submission.id)
-                turns_executed += 1
-                
-                # 更新token使用统计
-                if turn_result.token_usage:
-                    self._update_token_usage(turn_result.token_usage)
-                
-                # 记录最后的agent消息内容（assistant消息已在AgentTurn中添加）
-                if turn_result.text_content:
-                    last_agent_message = turn_result.text_content
-                
-                # 如果没有工具调用，任务完成
-                if not turn_result.has_tool_calls():
+        try:
+            while turn_count < max_turns:
+                try:
+                    # 执行一个AgentTurn
+                    turn_result = await agent_turn.execute_turn(submission.id)
+                    turns_executed += 1
+                    
+                    # 更新token使用统计
+                    if turn_result.token_usage:
+                        self._update_token_usage(turn_result.token_usage)
+                    
+                    # 记录最后的agent消息内容（assistant消息已在AgentTurn中添加）
+                    if turn_result.text_content:
+                        last_agent_message = turn_result.text_content
+                    
+                    # 如果没有工具调用，任务完成
+                    if not turn_result.has_tool_calls():
+                        break
+                    
+                    # 每轮后检查并执行消息压缩
+                    await self._check_and_compact(submission.id)
+                    
+                    # 继续下一轮对话
+                    turn_count += 1
+                    
+                except Exception as e:
+                    await self.event_handler.emit_error(submission.id, f"AgentTurn执行失败: {str(e)}")
                     break
-                
-                # 每轮后检查并执行消息压缩
-                await self._check_and_compact(submission.id)
-                
-                # 继续下一轮对话
-                turn_count += 1
-                
-            except Exception as e:
-                await self.event_handler.emit_error(submission.id, f"AgentTurn执行失败: {str(e)}")
-                break
+        finally:
+            self.model_client.tool_registry = original_tool_registry
         
         # 检查是否达到最大轮次
         if turn_count >= max_turns:
@@ -337,6 +437,17 @@ class Session:
             submission.id, 
             last_agent_message or "任务已完成"
         )
+        if skill_context:
+            self._run_skill_hook_commands("on_skill_complete", skill_context, submission.id)
+            self.hook_provider.on_skill_complete(
+                self.session_id,
+                submission.id,
+                {
+                    "skill": skill_context,
+                    "last_message": last_agent_message or "任务已完成",
+                    "turns": turns_executed,
+                },
+            )
         self.hook_provider.on_task_complete(
             self.session_id,
             submission.id,

@@ -304,6 +304,31 @@ class ToolRegistry:
             }
             for tool in tools
         ]
+
+    def clone_with_allowed_tools(self, allowed_tools: List[str]) -> "ToolRegistry":
+        """
+        复制一个仅包含允许工具的注册表
+
+        Args:
+            allowed_tools: 允许的工具名称列表，`*` 表示保留当前所有工具
+        """
+        cloned = ToolRegistry()
+        cloned._tools.clear()
+        cloned._instances.clear()
+
+        if "*" in allowed_tools:
+            for tool_info in self.list_tools():
+                cloned.register_tool(tool_info.tool_class, enabled=tool_info.enabled)
+            return cloned
+
+        for tool_name in allowed_tools:
+            tool_info = self.get_tool_info(tool_name)
+            if not tool_info:
+                logger.warning(f"Tool {tool_name} not found when cloning registry")
+                continue
+            cloned.register_tool(tool_info.tool_class, enabled=tool_info.enabled)
+
+        return cloned
     
     async def execute_tool(self, tool_id: str, params: Dict[str, Any], context: ToolContext) -> Optional[ToolResult]:
         """

@@ -91,12 +91,18 @@ class ModelClient:
             pass
         self.conversation_history.append(Message("system", content))
     
-    def add_user_message(self, content: str):
+    def add_user_message(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """添加用户消息"""
         if self.memory_manager:
-            self.memory_manager.add_user_message(content)
+            self.memory_manager.add_user_message(content, metadata=metadata)
         else:
-            self.conversation_history.append(Message("user", content))
+            self.conversation_history.append(
+                Message("user", content, metadata=metadata or {})
+            )
     
     def add_assistant_message(self, content: str, tool_calls: Optional[List[Dict[str, Any]]] = None):
         """添加助手消息"""
@@ -189,9 +195,10 @@ class ModelClient:
     
     def get_tools_schema(self) -> List[Dict[str, Any]]:
         """获取工具模式定义 - 从工具注册系统动态获取"""
-        from tools.registry import get_global_registry
-        
-        registry = get_global_registry()
+        registry = self.tool_registry
+        if registry is None:
+            from tools.registry import get_global_registry
+            registry = get_global_registry()
         tools_dict = registry.get_tools_dict(enabled_only=True)
         
         # 转换为OpenAI API需要的格式
@@ -208,6 +215,23 @@ class ModelClient:
             openai_tools.append(openai_tool)
         
         return openai_tools
+
+    def _build_runtime_tool_constraint_message(self) -> Optional[str]:
+        """构建当前回合的动态工具约束消息"""
+        registry = self.tool_registry
+        if registry is None:
+            return None
+
+        tools = registry.get_tools_dict(enabled_only=True)
+        if not tools:
+            return "当前回合不可调用任何工具。不要尝试调用未提供的工具。"
+
+        tool_names = ", ".join(tool["name"] for tool in tools)
+        return (
+            "当前回合仅允许使用以下工具："
+            f"{tool_names}。\n"
+            "不要调用列表之外的工具；如果某个工具不在这个列表中，就视为当前不可用。"
+        )
     
     async def chat_completion(self, stream: bool = False) -> ChatResponse:
         """发送聊天完成请求"""
@@ -230,6 +254,13 @@ class ModelClient:
                 message_dict["tool_call_id"] = msg.tool_call_id
             
             messages.append(message_dict)
+
+        runtime_tool_message = self._build_runtime_tool_constraint_message()
+        if runtime_tool_message:
+            messages.append({
+                "role": "system",
+                "content": runtime_tool_message,
+            })
 
         logger.debug(f"发送消息到模型: {len(messages)} 条")
         

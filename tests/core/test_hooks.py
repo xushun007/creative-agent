@@ -39,6 +39,12 @@ class CollectorHooks(HooksBase):
     def on_task_complete(self, context: HookContext) -> None:
         self.events.append(context)
 
+    def on_skill_start(self, context: HookContext) -> None:
+        self.events.append(context)
+
+    def on_skill_complete(self, context: HookContext) -> None:
+        self.events.append(context)
+
     def on_turn_start(self, context: HookContext) -> None:
         self.events.append(context)
 
@@ -122,6 +128,18 @@ class HookProviderTestCase(unittest.TestCase):
         self.assertEqual(context.submission_id, "sub1")
         self.assertEqual(context.payload["x"], 1)
         self.assertTrue(context.timestamp)
+
+    def test_provider_dispatches_skill_events(self):
+        provider = HookProvider(with_default_processors=False)
+        collector = CollectorHooks()
+        provider.register_hook(collector)
+
+        provider.on_skill_start("s1", "sub1", {"skill": {"id": "verify"}})
+        provider.on_skill_complete("s1", "sub1", {"skill": {"id": "verify"}})
+
+        names = [event.name for event in collector.events]
+        self.assertIn("skill.start", names)
+        self.assertIn("skill.complete", names)
 
     def test_error_hook_includes_name(self):
         provider = HookProvider(with_default_processors=False)

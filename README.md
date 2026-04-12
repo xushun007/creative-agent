@@ -11,6 +11,7 @@
 - 支持沙箱与命令审批策略
 - 支持会话持久化与恢复（memory/session）
 - 支持上下文压缩（compaction，默认关闭）
+- 支持文件驱动的 `skill` 系统
 
 
 ## 环境要求
@@ -78,16 +79,38 @@ python3 src/cli/main.py chat
 python3 src/cli/main.py sessions
 ```
 
+## Skill 目录
+
+主目录：
+
+```text
+.ctv-agent/skills/<skill-id>/SKILL.md
+~/.config/ctv-agent/skills/<skill-id>/SKILL.md
+```
+
+兼容目录：
+
+```text
+.claude/skills/<skill-id>/SKILL.md
+~/.claude/skills/<skill-id>/SKILL.md
+```
+
+优先级：
+
+```text
+project(.ctv-agent) > user(.ctv-agent) > project(.claude) > user(.claude) > bundled
+```
+
 ## 运行测试
 
 ```bash
-pytest -v
+./.venv/bin/python -m pytest -v
 ```
 
 或指定模块：
 
 ```bash
-pytest tests/core/ tests/tools/ -v
+./.venv/bin/python -m pytest tests/core/ tests/tools/ -v
 ```
 
 ## 配置说明
@@ -114,7 +137,8 @@ pytest tests/core/ tests/tools/ -v
 ```text
 src/
   cli/            # Typer CLI 入口
-  core/           # Engine / Session / Config / Memory / Hooks
+  core/           # Engine / Session / Config / Memory / Hooks / Skill
+  skills/         # bundled skill 定义与资源文件
   tools/          # 工具实现与注册
   prompt/         # 系统提示词与模板
 tests/            # 单元测试

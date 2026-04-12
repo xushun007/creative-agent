@@ -2,7 +2,7 @@
 
 import uuid
 from pathlib import Path
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, Any, Dict
 from datetime import datetime
 
 from .models import MemoryMessage, SessionMeta, CompactedMarker
@@ -240,7 +240,11 @@ class MemoryManager:
         self.recorder.write_message(msg)
         return msg
     
-    def add_user_message(self, content: str) -> MemoryMessage:
+    def add_user_message(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> MemoryMessage:
         """添加用户消息
         
         Args:
@@ -252,7 +256,8 @@ class MemoryManager:
         msg = MemoryMessage(
             role="user",
             content=content,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
+            metadata=metadata or {},
         )
         self.messages.append(msg)
         self.recorder.write_message(msg)
@@ -423,4 +428,3 @@ class MemoryManager:
             [(rollout_path, session_meta), ...] 列表
         """
         return RolloutRecorder.list_sessions(session_dir)
-

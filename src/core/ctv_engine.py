@@ -1,7 +1,7 @@
 """CTV核心引擎"""
 
 import asyncio
-from typing import Optional, AsyncIterator
+from typing import Optional, AsyncIterator, Dict, Any
 from pathlib import Path
 
 from .config import Config
@@ -42,12 +42,17 @@ class CtvEngine:
             await self.session.stop()
             self.session = None
     
-    async def submit_user_input(self, text: str, cwd: Optional[Path] = None) -> str:
+    async def submit_user_input(
+        self,
+        text: str,
+        cwd: Optional[Path] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """提交用户输入"""
         if not self.session:
             raise RuntimeError("会话未启动")
         
-        op = Op.user_input(text, cwd)
+        op = Op.user_input(text, cwd, metadata=metadata)
         submission_id = await self.session.submit_operation(op)
         return submission_id
     

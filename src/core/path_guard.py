@@ -51,6 +51,7 @@ class PathPolicy:
     read_scope: str
     workspace_root: Path
     allowed_roots: Tuple[Path, ...]
+    extra_read_roots: Tuple[Path, ...]
     read_only_subpaths: Tuple[Path, ...]
     deny_roots: Tuple[Path, ...]
 
@@ -77,6 +78,7 @@ def build_path_policy(config: Optional[Any], cwd: Optional[Path] = None) -> Path
     workspace_root = _normalize_path(workspace_root)
 
     allowed_roots = (_normalize_path(workspace_root),)
+    extra_read_roots: Tuple[Path, ...] = tuple()
     read_only_subpaths = tuple(
         _normalize_path(root / name)
         for root in allowed_roots
@@ -88,6 +90,7 @@ def build_path_policy(config: Optional[Any], cwd: Optional[Path] = None) -> Path
         read_scope=read_scope,
         workspace_root=workspace_root,
         allowed_roots=allowed_roots,
+        extra_read_roots=extra_read_roots,
         read_only_subpaths=read_only_subpaths,
         deny_roots=tuple(),
     )
@@ -95,10 +98,25 @@ def build_path_policy(config: Optional[Any], cwd: Optional[Path] = None) -> Path
 
 def policy_from_context(context: Optional[Any], cwd: Optional[Path] = None) -> PathPolicy:
     config = None
+    extra_read_roots: Tuple[Path, ...] = tuple()
     if context is not None:
         extra = getattr(context, "extra", None) or {}
         config = extra.get("config")
-    return build_path_policy(config, cwd=cwd)
+        extra_read_roots = tuple(
+            _normalize_path(Path(root))
+            for root in (extra.get("extra_read_roots") or [])
+        )
+
+    policy = build_path_policy(config, cwd=cwd)
+    return PathPolicy(
+        mode=policy.mode,
+        read_scope=policy.read_scope,
+        workspace_root=policy.workspace_root,
+        allowed_roots=policy.allowed_roots,
+        extra_read_roots=extra_read_roots,
+        read_only_subpaths=policy.read_only_subpaths,
+        deny_roots=policy.deny_roots,
+    )
 
 
 def _is_under_any(path: Path, roots: Iterable[Path]) -> bool:
@@ -126,7 +144,8 @@ def check_path_access(policy: PathPolicy, path: Path, op: str) -> Tuple[bool, Op
     if op in {"read", "list", "glob", "grep", "search"}:
         if policy.read_scope == "full":
             return True, None
-        if _is_under_any(normalized_path, policy.allowed_roots):
+        readable_roots = policy.allowed_roots + policy.extra_read_roots
+        if _is_under_any(normalized_path, readable_roots):
             return True, None
         return False, "读取路径不在允许范围内"
 

@@ -108,13 +108,15 @@ class AgentTurn:
                  event_handler: Optional[EventHandler] = None,
                  session_id: str = "default",
                  hook_provider: Optional[HookProvider] = None,
-                 abort_event: Optional[asyncio.Event] = None):
+                 abort_event: Optional[asyncio.Event] = None,
+                 tool_context_extra: Optional[Dict[str, Any]] = None):
         self.model_client = model_client
         self.tool_registry = tool_registry
         self.event_handler = event_handler  # 可以为None，不强制要求
         self.session_id = session_id
         self.hook_provider = hook_provider
         self.abort_event = abort_event
+        self.tool_context_extra = tool_context_extra or {}
         
         # 批准机制相关
         self.approval_pending: Dict[str, Dict[str, Any]] = {}
@@ -350,6 +352,7 @@ class AgentTurn:
                     # 让工具可发进度事件/联动取消
                     "event_handler": self.event_handler,
                     "abort_event": self.abort_event,
+                    **self.tool_context_extra,
                 },
             )
             

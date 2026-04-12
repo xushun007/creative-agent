@@ -23,6 +23,12 @@ class HooksBase(abc.ABC):
     def on_task_complete(self, context: HookContext) -> None:
         return None
 
+    def on_skill_start(self, context: HookContext) -> None:
+        return None
+
+    def on_skill_complete(self, context: HookContext) -> None:
+        return None
+
     def on_turn_start(self, context: HookContext) -> None:
         return None
 
