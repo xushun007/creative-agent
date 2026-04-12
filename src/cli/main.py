@@ -13,9 +13,14 @@ from rich.layout import Layout
 from rich.markdown import Markdown
 from rich.prompt import Prompt, Confirm
 
-from core import Config, CodexEngine
+from core import Config, CtvEngine
 from core.protocol import Event, EventMsg
 from core.memory import MemoryManager
+from cli.commands.skill import (
+    init_skill_registry,
+    is_skill_command,
+    handle_skill_command,
+)
 
 
 # 全局变量
@@ -25,26 +30,33 @@ app = typer.Typer(name="CTV-Agent", help="Creative Agent - AI编程助手")
 
 class CodexCLI:
     """CTV Agent CLI控制器"""
-    
+
     def __init__(self, config: Config, memory_manager=None):
         self.config = config
-        self.engine: Optional[CodexEngine] = None
+        self.engine: Optional[CtvEngine] = None
         self.running = False
         self.pending_approvals = {}
         self._memory_manager = memory_manager  # 恢复的 memory_manager
+        self._skill_registry = None  # Skill 注册表
     
     async def start(self):
         """启动CLI"""
         try:
+            # 初始化 Skill 注册表
+            self._skill_registry = init_skill_registry(self.config)
+
             # 启动引擎（传入恢复的 memory_manager）
-            self.engine = CodexEngine(self.config, memory_manager=self._memory_manager)
+            self.engine = CtvEngine(self.config, memory_manager=self._memory_manager)
             await self.engine.start()
-            
+
             # 显示启动 UI（标记是否为恢复的会话）
             self.show_start_UI(resumed=self._memory_manager is not None)
-            
+
+            # 显示可用 Skills
+            self._show_available_skills()
+
             self.running = True
-            
+
             # 启动事件处理
             event_task = asyncio.create_task(self._handle_events())
             
@@ -295,7 +307,20 @@ class CodexCLI:
                 elif user_input.lower() == 'status':
                     self._show_status()
                     continue
-                
+
+                # 检查是否为 Skill 命令
+                if is_skill_command(user_input):
+                    skill_prompt = handle_skill_command(
+                        self._skill_registry,
+                        user_input,
+                        {"session_id": self.engine.session.session_id if self.engine and self.engine.session else "unknown"}
+                    )
+                    if skill_prompt:
+                        # 将 Skill 提示词作为用户输入提交
+                        if self.engine:
+                            await self.engine.submit_user_input(skill_prompt)
+                    continue
+
                 # 提交用户输入
                 if self.engine:
                     await self.engine.submit_user_input(user_input)
@@ -322,6 +347,12 @@ class CodexCLI:
 - exit, quit, q  退出程序
 - clear, cls     清屏
 - status         显示状态信息
+- /skills        列出所有可用技能
+
+[bold]技能命令 (Skill):[/bold]
+- /<skill-id>              执行技能
+- /help <skill-id>        显示技能帮助
+- /skills                 列出所有可用技能
 
 [bold]使用方法:[/bold]
 直接输入你的编程请求，例如：
@@ -342,9 +373,15 @@ class CodexCLI:
             cwd=self.config.cwd,
             sandbox_policy=self.config.sandbox_policy
         )
-        
+
         console.print(Panel(help_text, title="帮助", border_style="cyan"))
-    
+
+    def _show_available_skills(self):
+        """显示可用的 Skills"""
+        from cli.commands.skill import list_skills
+        console.print()
+        list_skills(self._skill_registry)
+
     def _show_status(self):
         """显示状态信息"""
         if not self.engine:
